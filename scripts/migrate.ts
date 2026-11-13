@@ -19,6 +19,7 @@ async function main() {
       "003_verification",
       "004_screenshots",
       "005_screenshot_history",
+      "006_store_snapshots",
     ]) {
       const applied = await client.query(
         "select name from storepilot_migrations where name=$1",

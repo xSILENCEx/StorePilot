@@ -13,7 +13,22 @@
 - Graphile Worker 独立进程；冻结任务输入、按应用及平台串行、轮询状态、步骤日志、自动重试与失败后手动重试。当前真实任务是字段长度和素材可读性校验。
 - 旧版 localStorage 草稿可通过页面顶部入口导入；原数据保留。JSON 导出仅包含草稿及素材引用，不是完整备份。
 
-已提供商店与模型配置页面及凭据加密保存。已接通连接验证；尚未实现官方语言目录、设备截图合规校验、远端拉取与冲突处理、差异推送及回读、元数据翻译、自动模板规划、多语言批量翻译、公网入口和开机启动。推送保持禁用。后台校验成功不等同于商店校验通过。
+已提供商店与模型配置页面及凭据加密保存。已接通连接验证；尚未实现官方语言目录、设备截图合规校验、Google 远端拉取、冲突处理、差异推送及回读、元数据翻译、自动模板规划、多语言批量翻译、公网入口和开机启动。推送保持禁用。后台校验成功不等同于商店校验通过。
+
+## Apple 商店只读闭环（第一步）
+
+应用详情的 Apple Tab 新增「Apple 商店文案」：
+
+1. 在连接设置填好 Apple 凭据、应用平台与**明确的目标版本号**。
+2. 点击「拉取远端文案」。Worker 仅执行 GET：核对应用身份，分别读取应用级名称/副标题及目标版本描述/关键词，支持分页。
+3. 若存在多个应用资料版本，任务会列出 ID 与状态；在「应用资料 ID」中填写要读取的 ID 再拉取，不自动猜测。
+4. 展开语言查看草稿与远端差异（有同目标的上次快照时也显示上次远端）。点击「导入缺少的语言」走现有草稿自动保存流程；已有语言即使为空也不会覆盖，截图保持原样。
+
+每次成功拉取原子保存当前及上次快照；失败保留原快照和草稿。连接配置改变后旧快照标为过期，需重新拉取后才能导入。应用级和版本级语言不完整时显示提示。此阶段仅覆盖四个文案字段，不读取远端截图，不处理冲突选择、不写入 Apple，不根据状态推断可编辑权限。
+
+升级执行 `npm run db:migrate` 并重启 Worker。自动化验证：`npx tsx scripts/verify-apple-sync.ts`，创建后删除隔离测试数据库，用模拟 Apple 响应和真实 Worker 检查鉴权、队列、失败保留与配置竞态，不调用真实 Apple 服务。已用模拟数据通过浏览器差异展开与导入交互验证，真实 Apple 应用仍需只读验收。
+
+字段依据：[应用级本地化](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-appinfolocalizations-_id_)、[版本级本地化](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-appstoreversions-_id_-appstoreversionlocalizations)、[按平台及版本定位](https://developer.apple.com/documentation/appstoreconnectapi/uploading-app-previews)。
 
 ## 手动配置商店与模型
 
@@ -34,7 +49,7 @@
 - Google「验证应用权限」：需先在页面确认临时 edit 的影响，然后创建 edit、读取本地化列表并删除本次 edit，不调用 commit。Google [官方文档](https://developers.google.com/resources/api-libraries/documentation/androidpublisher/v3/python/latest/androidpublisher_v3.edits.html)说明，新 edit 可能使该账号已有的 edit 失效；请避开其他正在进行的 API 编辑任务。清理失败会明确报告。
 - 文本 / 图像模型：携带已保存密钥访问 `/models`，检查模型 ID。未找到时为部分通过；不调用文本或图片生成接口，不能证明生成能力或余额充足。
 
-每次修改或清除配置都会使旧验证失效；执行中的旧任务也不能把结果写回新配置。失败会显示步骤、HTTP 状态或网络原因，修正后可重新验证。长期排队时检查 `npm run worker`。图像生成已在应用详情的 AI 截图工作室接通；商店同步、推送和元数据翻译仍待后续开发。
+每次修改或清除配置都会使旧验证失效；执行中的旧任务也不能把结果写回新配置。失败会显示步骤、HTTP 状态或网络原因，修正后可重新验证。长期排队时检查 `npm run worker`。图像生成已在应用详情的 AI 截图工作室接通；Apple 文案只读拉取已接入；其余同步、推送和元数据翻译仍待后续开发。
 
 如本机出站需要代理，可在启动 Worker 的终端设置 `NODE_USE_ENV_PROXY=1`、`HTTPS_PROXY` / `HTTP_PROXY`，并设置 `NO_PROXY=127.0.0.1,localhost,::1` 后运行 `npm run worker`；所有验证请求仍由本机 Worker 发出。不要把密钥放入代理或 API URL。
 

@@ -959,3 +959,41 @@ select {
     padding: 16px !important;
   }
 }
+
+.apple-sync-panel {
+  margin: 16px 0;
+  padding: 20px;
+  border: 1px solid #dce2ea;
+  border-radius: 12px;
+  background: white;
+}
+.apple-sync-panel p {
+  margin: 12px 0;
+}
+.apple-sync-panel input {
+  max-width: 400px;
+  margin: 8px;
+}
+.apple-sync-panel details {
+  margin-top: 12px;
+  border-top: 1px solid #dce2ea;
+  padding-top: 12px;
+}
+.apple-sync-values {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.apple-sync-values > div {
+  flex: 1;
+  min-width: 180px;
+}
+.apple-sync-values pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  max-height: 260px;
+  overflow: auto;
+  background: #f4f6f9;
+  padding: 12px;
+}

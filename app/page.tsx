@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AppleSyncPanel } from "../components/apple-sync-panel";
+import { importMissing } from "../lib/apple-sync-model";
 import { ImageStudio } from "../components/image-studio";
 import { useWorkspace } from "../lib/use-workspace";
 import type { Platform, Draft, StoreApp as App } from "../lib/model";
@@ -477,11 +479,27 @@ export default function Home() {
                       : "此平台尚未启用"}
                   </b>
                   <p>
-                    点击设置图标填写连接配置。商店连接验证、同步、AI
-                    翻译和推送尚未接入。
+                    点击设置图标配置与验证连接。Apple
+                    支持只读拉取文案；翻译和推送尚未接入。
                   </p>
                 </div>
               </div>
+              {platform === "apple" && app.apple && (
+                <AppleSyncPanel
+                  key={app.id}
+                  app={app}
+                  enabled={saved && !blocked && !!connectionConfigured}
+                  onImport={(snapshot) => {
+                    persist((current) =>
+                      current.map((a) =>
+                        a.id === app.id
+                          ? { ...a, drafts: importMissing(a.drafts, snapshot) }
+                          : a,
+                      ),
+                    );
+                  }}
+                />
+              )}
               {app[platform] ? (
                 <div className="editor">
                   <aside className="languages">

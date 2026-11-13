@@ -102,7 +102,7 @@ StorePilot（商店领航）是自托管的 Apple App Store / Google Play 商店
 ## 8. 当前状态与恢复入口
 
 - 项目目录：`/Users/liugl/Desktop/Projects/StorePilot`。
-- 公开仓库：https://github.com/xSILENCEx/StorePilot ，本地 `origin` 已关联，尚未创建提交或推送代码。
+- 公开仓库：https://github.com/xSILENCEx/StorePilot ，本地 `origin` 已关联，已建立本地基线提交，尚未推送代码。
 - 本次确认先完成本机基础；已补齐商店与模型配置页面，凭据由用户手动填写；C / D / E 阶段继续保留为后续开发范围。
 - 依赖安装、类型检查、单元测试和生产构建已通过；npm audit 无已知漏洞。
 - 已实现 PostgreSQL + Drizzle 草稿持久化、Better Auth 管理员登录与关闭注册、本机图片上传与哈希去重、鉴权素材读取、Graphile Worker 独立进程与任务/步骤日志。
@@ -115,7 +115,7 @@ StorePilot（商店领航）是自托管的 Apple App Store / Google Play 商店
 - 本机 PostgreSQL 使用项目内真实 PostgreSQL 二进制，数据目录 `data/postgres`，监听 `127.0.0.1:55432`；素材在 `data/assets`。可通过 `DATABASE_URL` 改用外部 PostgreSQL。
 - 已新增 `/settings`：Apple / Google 按应用独立配置；文本 / 图像模型按工作空间分别配置。支持私钥 / JSON 文件上传、API 地址与模型选项、留空保留密钥、替换、清除及配置修订冲突检查。
 - 凭据采用 AES-256-GCM 加密，主密钥在运行环境 `STOREPILOT_MASTER_KEY`，GET 不回显明文或密文；格式校验不等于连接验证。已通过配置 API 集成验证，未调用外部服务。
-- 当前 UI 仍是普通 CSS；Tailwind / shadcn、TanStack Query、React Hook Form、正式商店适配器和 AI 模板未接入；尚未配置 Tunnel 或开机启动。
+- 当前 UI 仍是普通 CSS；Tailwind / shadcn、TanStack Query、React Hook Form、完整商店写入适配器未接入；固定 AI 截图模板已接入；尚未配置 Tunnel 或开机启动。
 - 后续启动：分别运行 `npm run db:local`、`npm run dev`、`npm run worker`；访问 http://127.0.0.1:3000/login 。首次安装及验证步骤见 README。
 
 ### 已核对的基础字段限制（2026-11-13）
@@ -145,3 +145,9 @@ StorePilot（商店领航）是自托管的 Apple App Store / Google Play 商店
 定位并修复一次网页无响应：旧开发进程保持监听 3000，但输出管道断开触发 `write EPIPE`，页面请求超时。已停止旧开发进程，切换到生产 Web，并把 Web / Worker 独立运行、输出重定向到 `data/logs/`。已验证首页、登录页、设置页、登录后的应用 / 任务 / 模型配置接口及页面 JS 资源均可访问。
 
 新增 `services:start`、`services:stop`、`services:status`，重复启动复用已托管进程；本机数据库未启动时可自动启动，外部已运行数据库只复用，不误停。生产构建更新需先停止后台 Web，再 build 和重新启动。进程记录在 `data/services.json`，不进入 Git。此机制不包含系统开机启动。
+
+### 商店闭环恢复：Apple 只读文案
+
+已实现指定平台/版本的 Apple 应用级及版本级本地化读取、当前/上次远端快照持久化、后台任务与步骤日志，以及页面差异展示与缺少语言导入。已有草稿（含空草稿）不覆盖，不修改现有截图。多 appInfo 时明确选择 ID；配置变更使旧快照过期，并阻止执行中旧任务写回。失败保留原快照。
+
+新增迁移 `006_store_snapshots`。类型检查、单元测试、生产构建及隔离 PostgreSQL + 真实 Worker 集成验证已通过；Apple 响应使用模拟，已用模拟数据通过浏览器差异展开与导入交互验证，真实 Apple 应用待只读验收。后续先完成真实只读验收，再做三方冲突处理和确认后的文案推送/回读。

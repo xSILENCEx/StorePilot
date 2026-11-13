@@ -1,3 +1,4 @@
+import { pullAppleTask } from "./apple-sync-task";
 import { generateImageTask } from "./image-task";
 import type { TaskList } from "graphile-worker";
 import { pool } from "./db";
@@ -6,6 +7,7 @@ import { assetPath } from "./storage";
 import sharp from "sharp";
 import { verifyConnectionTask } from "./connection-task";
 export const taskList: TaskList = {
+  pull_apple: pullAppleTask,
   generate_image: generateImageTask,
   verify_connection: verifyConnectionTask,
   validate_draft: async (payload, helpers) => {

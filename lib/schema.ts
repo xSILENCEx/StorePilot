@@ -102,3 +102,18 @@ export const imageCalls = pgTable("image_calls", {
     .defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
+
+export const storeSnapshots = pgTable("store_snapshots", {
+  appId: text("app_id").primaryKey(),
+  configRevision: integer("config_revision").notNull(),
+  currentSnapshot: jsonb("current_snapshot")
+    .$type<import("./apple-sync-model").AppleSnapshot>()
+    .notNull(),
+  previousSnapshot:
+    jsonb("previous_snapshot").$type<
+      import("./apple-sync-model").AppleSnapshot
+    >(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
