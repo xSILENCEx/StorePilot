@@ -3,10 +3,19 @@ import { sign } from "node:crypto";
 import { configFields } from "./config-model";
 import { draftSchema } from "./model";
 import type { AppleSnapshot } from "./apple-sync-model";
-export class AppleReadError extends Error {}
+export class AppleReadError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+  ) {
+    super(message);
+  }
+}
 const resource = z.object({
   id: z.string().min(1),
-  attributes: z.record(z.string(), z.unknown()),
+  type: z.string().optional(),
+  attributes: z.record(z.string(), z.unknown()).default({}),
+  relationships: z.record(z.string(), z.unknown()).optional(),
 });
 type Resource = z.infer<typeof resource>;
 const base = "https://api.appstoreconnect.apple.com";
@@ -16,8 +25,6 @@ export async function readAppleSnapshot(
   fetcher: typeof fetch = fetch,
 ): Promise<AppleSnapshot> {
   const fields = configFields.apple.parse(config.fields);
-  if (!fields.version)
-    throw new AppleReadError("请先在连接设置填写明确的目标版本号，再拉取。");
   const now = Math.floor(Date.now() / 1000);
   const data = [
     { alg: "ES256", kid: fields.keyId, typ: "JWT" },
@@ -31,9 +38,11 @@ export async function readAppleSnapshot(
     .map((v) => Buffer.from(JSON.stringify(v)).toString("base64url"))
     .join(".");
   const token = `${data}.${sign("sha256", Buffer.from(data), { key: config.secret, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
-  async function request(
-    path: string,
-  ): Promise<{ data: unknown; links?: { next?: string | null } }> {
+  async function request(path: string): Promise<{
+    data: unknown;
+    included?: Resource[];
+    links?: { next?: string | null };
+  }> {
     const url = new URL(path, base);
     if (
       url.origin !== base ||
@@ -57,6 +66,7 @@ export async function readAppleSnapshot(
       await response.body?.cancel();
       throw new AppleReadError(
         `Apple 读取失败（HTTP ${response.status}），请检查凭据、权限和目标版本。`,
+        response.status,
       );
     }
     const reader = response.body?.getReader();
@@ -77,6 +87,7 @@ export async function readAppleSnapshot(
       return z
         .object({
           data: z.unknown(),
+          included: z.array(resource).optional(),
           links: z
             .object({ next: z.string().nullable().optional() })
             .optional(),
@@ -86,6 +97,7 @@ export async function readAppleSnapshot(
       throw new AppleReadError("Apple 响应格式无效，未更新快照。");
     }
   }
+  const included = new Map<string, Resource>();
   async function list(path: string) {
     const rows: Resource[] = [];
     const seen = new Set<string>();
@@ -95,6 +107,8 @@ export async function readAppleSnapshot(
         throw new AppleReadError("Apple 分页异常，未更新快照。");
       seen.add(next);
       const page = await request(next);
+      for (const row of page.included ?? [])
+        included.set(`${row.type}:${row.id}`, row);
       rows.push(...z.array(resource).parse(page.data));
       next = page.links?.next;
     }
@@ -105,27 +119,21 @@ export async function readAppleSnapshot(
   );
   if (app.id !== fields.appId || app.attributes.bundleId !== fields.bundleId)
     throw new AppleReadError("Apple 应用 ID / Bundle ID 与连接设置不匹配。");
+  const versionQuery = new URLSearchParams({
+    "filter[platform]": fields.appPlatform,
+    limit: "200",
+  });
+  if (fields.version) versionQuery.set("filter[versionString]", fields.version);
   const versions = (
-    await list(
-      `/v1/apps/${fields.appId}/appStoreVersions?filter[platform]=${fields.appPlatform}&filter[versionString]=${encodeURIComponent(fields.version)}&limit=200`,
-    )
+    await list(`/v1/apps/${fields.appId}/appStoreVersions?${versionQuery}`)
   ).filter(
     (v) =>
       v.attributes.platform === fields.appPlatform &&
-      v.attributes.versionString === fields.version,
+      (!fields.version || v.attributes.versionString === fields.version),
   );
-  if (versions.length !== 1)
-    throw new AppleReadError(
-      "目标版本不存在或不唯一，请在连接设置明确平台和版本。",
-    );
+  const version = selectVersion(versions, fields.version);
   const infos = await list(`/v1/apps/${fields.appId}/appInfos?limit=200`);
-  const choices = appInfoId ? infos.filter((v) => v.id === appInfoId) : infos;
-  if (choices.length !== 1)
-    throw new AppleReadError(
-      `请选择应用资料 ID 后重新拉取：${infos.map((v) => `${v.id}（${v.attributes.state ?? v.attributes.appStoreState ?? "未知状态"}）`).join("；")}`,
-    );
-  const info = choices[0],
-    version = versions[0];
+  const info = selectInfo(infos, version, appInfoId);
   const infoLocales = await list(
     `/v1/appInfos/${encodeURIComponent(info.id)}/appInfoLocalizations?limit=200`,
   );
@@ -154,6 +162,7 @@ export async function readAppleSnapshot(
           keywords: "",
           images: [],
         },
+        screenshots: [],
         appInfoLocalizationId: null,
         versionLocalizationId: null,
       });
@@ -162,21 +171,111 @@ export async function readAppleSnapshot(
       if (level === "info") {
         entry.draft.title = text("name");
         entry.draft.subtitle = text("subtitle");
+        entry.draft.privacyPolicyUrl = text("privacyPolicyUrl");
+        entry.draft.privacyChoicesUrl = text("privacyChoicesUrl");
         entry.appInfoLocalizationId = row.id;
       } else {
         entry.draft.description = text("description");
         entry.draft.keywords = text("keywords");
+        for (const field of [
+          "promotionalText",
+          "whatsNew",
+          "supportUrl",
+          "marketingUrl",
+        ] as const)
+          entry.draft[field] = text(field);
         entry.versionLocalizationId = row.id;
       }
       draftSchema.parse(entry.draft);
     }
   }
+  const warnings: string[] = [];
+  for (const [locale, entry] of Object.entries(locales)) {
+    if (!entry.versionLocalizationId) continue;
+    const id = encodeURIComponent(entry.versionLocalizationId);
+    let placements: Resource[] | null = null;
+    try {
+      placements = await list(
+        `/v1/appStoreVersionLocalizations/${id}/placements?sort=placementGroupPosition&include=image&limit=200`,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof AppleReadError) ||
+        ![404, 405].includes(error.status ?? 0)
+      )
+        throw error;
+    }
+    if (placements?.length) {
+      for (const placement of placements) {
+        if (
+          !["APP_SCREENSHOT", "IMESSAGE_APP_SCREENSHOT"].includes(
+            String(placement.attributes.placementType),
+          )
+        )
+          continue;
+        const imageId = relatedId(placement, "image");
+        if (!imageId)
+          throw new AppleReadError(
+            "Apple 截图未提供素材关联，未更新资料快照。",
+          );
+        let image = included.get(`appAssetLibraryImages:${imageId}`);
+        if (!image)
+          image = resource.parse(
+            (
+              await request(
+                `/v1/appAssetLibraryImages/${encodeURIComponent(imageId)}`,
+              )
+            ).data,
+          );
+        entry.screenshots.push(
+          screenshot(
+            placement.id,
+            image,
+            String(placement.attributes.placementGroup ?? "UNKNOWN"),
+          ),
+        );
+      }
+    } else {
+      // Existing apps can still expose screenshots through the deprecated set API.
+      // Use it only when the new placements relationship is unavailable or empty.
+      const sets = await list(
+        `/v1/appStoreVersionLocalizations/${id}/appScreenshotSets?limit=200`,
+      );
+      for (const set of sets) {
+        const images = await list(
+          `/v1/appScreenshotSets/${encodeURIComponent(set.id)}/appScreenshots?limit=200`,
+        );
+        for (const image of images)
+          entry.screenshots.push(
+            screenshot(
+              image.id,
+              image,
+              String(set.attributes.screenshotDisplayType ?? "UNKNOWN"),
+            ),
+          );
+      }
+    }
+    if (entry.screenshots.some((image) => !image.sourceUrl))
+      warnings.push(`${locale} 有尚未处理完成的截图，已保留状态，暂不可下载。`);
+  }
   return {
+    metadata: {
+      name: stringAttribute(app, "name"),
+      primaryLocale: stringAttribute(app, "primaryLocale"),
+      sku: stringAttribute(app, "sku"),
+      copyright: stringAttribute(version, "copyright"),
+      releaseType: stringAttribute(version, "releaseType"),
+      earliestReleaseDate: stringAttribute(version, "earliestReleaseDate"),
+      primaryCategoryId: relatedId(info, "primaryCategory") ?? "",
+      secondaryCategoryId: relatedId(info, "secondaryCategory") ?? "",
+      ageRating: stringAttribute(info, "appStoreAgeRating"),
+    },
+    warnings,
     target: {
       appId: fields.appId,
       bundleId: fields.bundleId,
       platform: fields.appPlatform,
-      version: fields.version,
+      version: String(version.attributes.versionString),
       versionId: version.id,
       versionState: String(
         version.attributes.appVersionState ??
@@ -190,5 +289,121 @@ export async function readAppleSnapshot(
     },
     locales,
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+function stringAttribute(row: Resource, key: string) {
+  return z.string().nullable().optional().parse(row.attributes[key]) ?? "";
+}
+function relatedId(row: Resource, name: string) {
+  const value = row.relationships?.[name];
+  if (!value) return null;
+  return (
+    z
+      .object({ data: z.object({ id: z.string() }).nullable().optional() })
+      .parse(value).data?.id ?? null
+  );
+}
+function state(row: Resource) {
+  return String(
+    row.attributes.appVersionState ??
+      row.attributes.state ??
+      row.attributes.appStoreState ??
+      "",
+  );
+}
+const published = new Set(["READY_FOR_DISTRIBUTION", "READY_FOR_SALE"]);
+function selectVersion(versions: Resource[], requested: string) {
+  if (!versions.length)
+    throw new AppleReadError(
+      requested
+        ? "未找到指定平台的目标版本，请检查版本号。"
+        : "该平台尚无 App Store 版本，请先在 App Store Connect 创建版本。",
+    );
+  if (requested) {
+    if (versions.length !== 1)
+      throw new AppleReadError("目标版本不唯一，请检查平台和版本配置。");
+    return versions[0];
+  }
+  return [...versions].sort(
+    (a, b) =>
+      Number(published.has(state(b))) - Number(published.has(state(a))) ||
+      String(b.attributes.versionString).localeCompare(
+        String(a.attributes.versionString),
+        "en",
+        { numeric: true },
+      ) ||
+      String(b.attributes.createdDate ?? "").localeCompare(
+        String(a.attributes.createdDate ?? ""),
+      ),
+  )[0];
+}
+function selectInfo(infos: Resource[], version: Resource, requested: string) {
+  if (requested) {
+    const found = infos.find((info) => info.id === requested);
+    if (found) return found;
+    throw new AppleReadError("指定的应用资料 ID 不存在，请检查高级选项。");
+  }
+  if (infos.length === 1) return infos[0];
+  const matches = infos.filter((info) =>
+    published.has(state(version))
+      ? published.has(state(info))
+      : state(info) === state(version),
+  );
+  if (matches.length === 1) return matches[0];
+  throw new AppleReadError(
+    `无法唯一确定应用资料，请在高级选项中指定：${infos.map((info) => `${info.id}（${state(info)}）`).join("；")}`,
+  );
+}
+function screenshot(
+  id: string,
+  image: Resource,
+  deviceType: string,
+): AppleSnapshot["locales"][string]["screenshots"][number] {
+  const asset = z
+    .object({
+      templateUrl: z.string(),
+      width: z.number().int().positive().max(10000),
+      height: z.number().int().positive().max(10000),
+    })
+    .nullable()
+    .optional()
+    .parse(image.attributes.imageAsset);
+  let sourceUrl: string | null = null;
+  if (asset) {
+    const url = new URL(
+      asset.templateUrl
+        .replaceAll("{w}", String(asset.width))
+        .replaceAll("{h}", String(asset.height))
+        .replaceAll("{f}", "png"),
+    );
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      !(
+        url.hostname === "mzstatic.com" ||
+        url.hostname.endsWith(".mzstatic.com")
+      ) ||
+      /[{}]|%7B|%7D/i.test(url.href) ||
+      asset.width * asset.height > 40000000
+    )
+      throw new AppleReadError("Apple 截图地址或尺寸不可信，已停止同步。");
+    sourceUrl = url.href;
+  }
+  const delivery = image.attributes.assetDeliveryState as
+    { state?: string } | undefined;
+  return {
+    id,
+    assetId: image.id,
+    deviceType,
+    fileName:
+      stringAttribute(image, "fileName") ||
+      stringAttribute(image, "referenceName"),
+    width: asset?.width ?? 0,
+    height: asset?.height ?? 0,
+    state: stringAttribute(image, "state") || delivery?.state || "UNKNOWN",
+    sourceUrl,
+    url: null,
   };
 }

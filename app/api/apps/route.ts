@@ -1,6 +1,6 @@
-import { eq, and } from "drizzle-orm";
-import { db, pool } from "../../../lib/db";
-import { workspaces } from "../../../lib/schema";
+import { eq, and, inArray } from "drizzle-orm";
+import { db } from "../../../lib/db";
+import { workspaces, assets } from "../../../lib/schema";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 import { workspaceSchema } from "../../../lib/model";
 export async function GET(request: Request) {
@@ -35,11 +35,12 @@ export async function PUT(request: Request) {
       ),
     ];
     if (ids.length) {
-      const found = await pool().query(
-        "select id from assets where id = any($1)",
-        [ids],
-      );
-      if (found.rowCount !== ids.length)
+      const found = db()
+        .select({ id: assets.id })
+        .from(assets)
+        .where(inArray(assets.id, ids as string[]))
+        .all();
+      if (found.length !== ids.length)
         throw new HttpError(400, "草稿包含不存在的素材");
     }
     const [row] = await db()
@@ -47,7 +48,7 @@ export async function PUT(request: Request) {
       .set({
         apps: value.apps,
         revision: value.revision + 1,
-        updatedAt: new Date(),
+        updatedAt: new Date().toISOString(),
       })
       .where(
         and(

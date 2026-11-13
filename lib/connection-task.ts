@@ -1,33 +1,22 @@
-import type { Task } from "graphile-worker";
-import { pool } from "./db";
+import { assertWorkerActive } from "./worker-context";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
+import { db } from "./db";
+import { connectionConfigs, type Job } from "./schema";
 import { configId, workerConfig } from "./config-store";
 import { checkConnection, type CheckResult } from "./connection-check";
 import { configScope } from "./config-model";
-export const verifyConnectionTask: Task = async (payload) => {
-  const { id } = payload as { id: string };
-  const {
-    rows: [job],
-  } = await pool().query(
-    "select * from jobs where id=$1 and kind='verify_connection'",
-    [id],
-  );
-  if (!job || job.status === "succeeded") return;
-  const scope = configScope.parse(job.input.scope);
-  const { appId, revision, verifyApplication } = job.input;
+import { finishJob, logJob } from "./job-store";
+export async function verifyConnectionTask(job: Job) {
+  const { scope, appId, revision, verifyApplication } = z
+    .object({
+      scope: configScope,
+      appId: z.string().optional(),
+      revision: z.number(),
+      verifyApplication: z.boolean(),
+    })
+    .parse(job.input);
   const target = configId(scope, appId);
-  await pool().query(
-    "update jobs set status='running',updated_at=now() where id=$1",
-    [id],
-  );
-  await pool().query(
-    "update connection_configs set verification=verification || $3::jsonb where id=$1 and revision=$2 and verification->>'jobId'=$4",
-    [
-      target,
-      revision,
-      { status: "running", message: "本机 Worker 正在验证连接" },
-      id,
-    ],
-  );
   let result: CheckResult;
   try {
     const config = await workerConfig(scope, appId);
@@ -36,12 +25,12 @@ export const verifyConnectionTask: Task = async (payload) => {
       scope,
       config,
       { verifyApplication },
-      fetch,
+      async (input, init) => {
+        assertWorkerActive();
+        return fetch(input, init);
+      },
       async (step, message) => {
-        await pool().query(
-          "insert into job_logs(job_id,step,message) values($1,$2,$3)",
-          [id, step, message],
-        );
+        logJob(job.id, step, message);
       },
     );
   } catch {
@@ -52,26 +41,27 @@ export const verifyConnectionTask: Task = async (payload) => {
       steps: [],
     };
   }
-  const client = await pool().connect();
-  try {
-    await client.query("begin");
-    await client.query(
-      "update connection_configs set verification=$3 where id=$1 and revision=$2 and verification->>'jobId'=$4",
-      [target, revision, { ...result, revision, jobId: id }, id],
+  db().transaction((tx) => {
+    const current = tx
+      .select()
+      .from(connectionConfigs)
+      .where(eq(connectionConfigs.id, target))
+      .get();
+    if (current?.verification?.jobId === job.id)
+      tx.update(connectionConfigs)
+        .set({ verification: { ...result, revision, jobId: job.id } })
+        .where(
+          and(
+            eq(connectionConfigs.id, target),
+            eq(connectionConfigs.revision, revision),
+          ),
+        )
+        .run();
+    finishJob(
+      job.id,
+      result.status === "failed" ? "failed" : "succeeded",
+      result,
     );
-    await client.query(
-      "update jobs set status=$2,result=$3,updated_at=now() where id=$1",
-      [id, result.status === "failed" ? "failed" : "succeeded", result],
-    );
-    await client.query(
-      "insert into job_logs(job_id,step,message) values($1,$2,$3)",
-      [id, "complete", result.message],
-    );
-    await client.query("commit");
-  } catch (e) {
-    await client.query("rollback");
-    throw e;
-  } finally {
-    client.release();
-  }
-};
+    logJob(job.id, "complete", result.message);
+  });
+}

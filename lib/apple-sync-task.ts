@@ -1,85 +1,94 @@
-import type { Task } from "graphile-worker";
-import { pool } from "./db";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { db } from "./db";
+import {
+  connectionConfigs,
+  storeSnapshots,
+  workspaces,
+  type Job,
+} from "./schema";
 import { workerConfig } from "./config-store";
 import { AppleReadError, readAppleSnapshot } from "./apple-sync";
-export const pullAppleTask: Task = async (payload) => {
-  const { id } = payload as { id: string };
-  const client = await pool().connect();
+import { saveAppleScreenshots } from "./apple-assets";
+import { finishJob, logJob } from "./job-store";
+export async function pullAppleTask(
+  job: Job,
+  download?: Parameters<typeof saveAppleScreenshots>[2],
+) {
+  const input = z
+    .object({ configRevision: z.number(), appInfoId: z.string() })
+    .parse(job.input);
   try {
-    const {
-      rows: [job],
-    } = await client.query(
-      "select * from jobs where id=$1 and kind='pull_apple'",
-      [id],
-    );
-    if (!job || job.status === "succeeded") return;
-    await client.query(
-      "update jobs set status='running',updated_at=now() where id=$1",
-      [id],
-    );
-    await client.query(
-      "insert into job_logs(job_id,step,message) values($1,'read','读取 Apple 应用级与指定版本文案，不修改商店或草稿')",
-      [id],
-    );
+    logJob(job.id, "read", "读取 Apple 商店元数据与截图，不修改商店或草稿");
     const config = await workerConfig("apple", job.app_id);
-    if (config.revision !== job.input.configRevision)
+    if (config.revision !== input.configRevision)
       throw new AppleReadError("配置已变更，请重新拉取。");
-    const snapshot = await readAppleSnapshot(config, job.input.appInfoId);
-    await client.query("begin");
-    const {
-      rows: [current],
-    } = await client.query(
-      "select revision from connection_configs where id=$1 for share",
-      [`apple:${job.app_id}`],
+    const snapshot = await readAppleSnapshot(config, input.appInfoId);
+    const oldSnapshot = db()
+      .select()
+      .from(storeSnapshots)
+      .where(eq(storeSnapshots.app_id, job.app_id))
+      .get()?.current_snapshot;
+    logJob(job.id, "images", "下载并保存各语言、设备的商店截图");
+    const screenshotCount = await saveAppleScreenshots(
+      snapshot,
+      oldSnapshot,
+      download,
     );
-    if (current?.revision !== config.revision)
-      throw new AppleReadError("拉取期间配置已变更，未更新快照。");
-    const {
-      rows: [workspace],
-    } = await client.query(
-      "select apps from workspaces where id='default' for share",
-    );
-    if (
-      !workspace?.apps.some(
-        (a: { id: string; apple: string }) => a.id === job.app_id && a.apple,
-      )
-    )
-      throw new AppleReadError("应用或 Apple 平台已移除，未更新快照。");
-    await client.query(
-      `insert into store_snapshots(app_id,config_revision,current_snapshot) values($1,$2,$3)
-      on conflict(app_id) do update set previous_snapshot=case when store_snapshots.current_snapshot->'target'=excluded.current_snapshot->'target' then store_snapshots.current_snapshot else null end,current_snapshot=excluded.current_snapshot,config_revision=excluded.config_revision,updated_at=now()`,
-      [job.app_id, config.revision, snapshot],
-    );
-    await client.query(
-      "update jobs set status='succeeded',result=$2,updated_at=now() where id=$1",
-      [
-        id,
-        {
-          message: `已读取 ${Object.keys(snapshot.locales).length} 种语言，草稿未改变`,
+    db().transaction(
+      (tx) => {
+        const current = tx
+          .select()
+          .from(connectionConfigs)
+          .where(eq(connectionConfigs.id, `apple:${job.app_id}`))
+          .get();
+        if (current?.revision !== config.revision)
+          throw new AppleReadError("拉取期间配置已变更，未更新快照。");
+        const app = tx
+          .select()
+          .from(workspaces)
+          .where(eq(workspaces.id, "default"))
+          .get()
+          ?.apps.find((a) => a.id === job.app_id);
+        if (!app?.apple)
+          throw new AppleReadError("Apple 应用已移除，未更新快照。");
+        const old = tx
+          .select()
+          .from(storeSnapshots)
+          .where(eq(storeSnapshots.app_id, job.app_id))
+          .get();
+        const value = {
+          app_id: job.app_id,
+          config_revision: config.revision,
+          current_snapshot: snapshot,
+          previous_snapshot:
+            old?.current_snapshot.target.versionId ===
+              snapshot.target.versionId &&
+            old?.current_snapshot.target.appInfoId === snapshot.target.appInfoId
+              ? (old?.current_snapshot ?? null)
+              : null,
+          updated_at: new Date().toISOString(),
+        };
+        tx.insert(storeSnapshots)
+          .values(value)
+          .onConflictDoUpdate({ target: storeSnapshots.app_id, set: value })
+          .run();
+        finishJob(job.id, "succeeded", {
+          message: `已同步 ${Object.keys(snapshot.locales).length} 种语言的元数据和 ${screenshotCount} 张截图，草稿未改变`,
           target: snapshot.target,
-        },
-      ],
+          screenshotCount,
+          warnings: snapshot.warnings,
+        });
+        logJob(job.id, "complete", "商店资料快照已保存");
+      },
+      { behavior: "immediate" },
     );
-    await client.query(
-      "insert into job_logs(job_id,step,message) values($1,'complete','远端快照已保存；请在工作台检查差异或导入缺少的语言')",
-      [id],
-    );
-    await client.query("commit");
   } catch (error) {
-    await client.query("rollback");
     const message =
       error instanceof AppleReadError
         ? error.message
-        : "Apple 拉取失败，请检查配置、数据库或响应格式。原快照和草稿均保留。";
-    await client.query(
-      "update jobs set status='failed',result=$2,updated_at=now() where id=$1",
-      [id, { error: message }],
-    );
-    await client.query(
-      "insert into job_logs(job_id,step,message) values($1,'failed',$2)",
-      [id, message],
-    );
-  } finally {
-    client.release();
+        : "Apple 商店资料同步失败，请检查配置或响应格式。";
+    finishJob(job.id, "failed", { error: message });
+    logJob(job.id, "failed", message);
   }
-};
+}

@@ -12,23 +12,121 @@ test("Apple joins application and version fields, follows pagination and preserv
   assert.equal(snapshot.locales["en-US"].appInfoLocalizationId, "il1");
   assert.equal(snapshot.locales["zh-Hans"].versionLocalizationId, null);
 });
-test("Explicit version and appInfo selection required; no arbitrary first result", async () => {
+test("Blank version selects published first, otherwise latest; app info follows the selected version state", async () => {
+  const withoutVersion = {
+    ...config,
+    fields: { ...config.fields, version: "" },
+  };
+  const snapshot = await readAppleSnapshot(
+    withoutVersion,
+    "",
+    mockApple({
+      ambiguous: true,
+      versions: [
+        {
+          id: "draft-2",
+          attributes: {
+            platform: "IOS",
+            versionString: "2.0",
+            appVersionState: "PREPARE_FOR_SUBMISSION",
+          },
+        },
+        {
+          id: "live-1",
+          attributes: {
+            platform: "IOS",
+            versionString: "1.0",
+            appVersionState: "READY_FOR_DISTRIBUTION",
+          },
+        },
+      ],
+    }),
+  );
+  assert.equal(snapshot.target.versionId, "live-1");
+  assert.equal(snapshot.target.appInfoId, "info2");
+  const latest = await readAppleSnapshot(
+    withoutVersion,
+    "",
+    mockApple({
+      versions: [
+        {
+          id: "v9",
+          attributes: {
+            platform: "IOS",
+            versionString: "1.9",
+            appVersionState: "PREPARE_FOR_SUBMISSION",
+          },
+        },
+        {
+          id: "v10",
+          attributes: {
+            platform: "IOS",
+            versionString: "1.10",
+            appVersionState: "PREPARE_FOR_SUBMISSION",
+          },
+        },
+      ],
+    }),
+  );
+  assert.equal(latest.target.version, "1.10");
   await assert.rejects(
     readAppleSnapshot(
-      { ...config, fields: { ...config.fields, version: "" } },
+      config,
       "",
-      mockApple(),
+      mockApple({ ambiguous: true, sameState: true }),
     ),
-    /目标版本/,
-  );
-  await assert.rejects(
-    readAppleSnapshot(config, "", mockApple({ ambiguous: true })),
     /info2/,
   );
   assert.equal(
-    (await readAppleSnapshot(config, "info1", mockApple({ ambiguous: true })))
-      .target.appInfoId,
+    (
+      await readAppleSnapshot(
+        config,
+        "info1",
+        mockApple({ ambiguous: true, sameState: true }),
+      )
+    ).target.appInfoId,
     "info1",
+  );
+});
+test("Reads metadata and ordered screenshot placements per device, with legacy API fallback", async () => {
+  const current = await readAppleSnapshot(
+    config,
+    "",
+    mockApple({ screenshots: true }),
+  );
+  assert.equal(current.metadata.primaryLocale, "en-US");
+  assert.equal(current.metadata.copyright, "2026 Fixture");
+  assert.equal(current.locales["en-US"].draft.promotionalText, "A useful app");
+  assert.equal(
+    current.locales["en-US"].draft.supportUrl,
+    "https://example.com/support",
+  );
+  assert.equal(current.locales["en-US"].screenshots.length, 2);
+  assert.equal(current.locales["en-US"].screenshots[0].id, "placement-1");
+  assert.equal(
+    current.locales["en-US"].screenshots[1].deviceType,
+    "IPAD_PRO_3GEN_129",
+  );
+  assert.match(
+    current.locales["en-US"].screenshots[0].sourceUrl!,
+    /80x120bb.png$/,
+  );
+  const legacy = await readAppleSnapshot(
+    config,
+    "",
+    mockApple({ screenshots: true, legacy: true }),
+  );
+  assert.equal(
+    legacy.locales["en-US"].screenshots[0].deviceType,
+    "APP_IPHONE_67",
+  );
+  await assert.rejects(
+    readAppleSnapshot(
+      config,
+      "",
+      mockApple({ screenshots: true, badImage: true }),
+    ),
+    /截图地址/,
   );
 });
 test("Reject untrusted pagination before sending credentials; sanitize remote errors", async () => {

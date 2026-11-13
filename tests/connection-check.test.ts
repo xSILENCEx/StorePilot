@@ -143,7 +143,6 @@ test("AI 仅 GET 模型目录，不发送生成请求；未找到模型为部分
       baseUrl: "https://example.com/v1/",
       model: "my-model",
       timeoutSeconds: 120,
-      concurrency: 1,
     },
     secret: "test-key",
   };

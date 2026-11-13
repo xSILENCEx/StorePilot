@@ -3,7 +3,7 @@ import { get } from "node:https";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { assetPath } from "./storage";
-import { generationPrompt, type ScreenshotSettings } from "./screenshot-model";
+import type { ImageSettings } from "./image-model";
 export class ImageGenerationError extends Error {
   constructor(
     message: string,
@@ -16,11 +16,10 @@ export type ImageModelConfig = {
   model: string;
   baseUrl: string;
   timeoutSeconds: number;
-  concurrency: number;
 };
 export type ImageReply = { b64_json?: string; url?: string };
 export function responsePath(id: string) {
-  if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid candidate id");
+  if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid image request id");
   return path.join(
     path.dirname(assetPath("0".repeat(64))),
     "..",
@@ -65,15 +64,14 @@ export async function readLimited(response: Response, limit: number) {
 export async function callImageModel(
   config: ImageModelConfig,
   secret: string,
-  settings: ScreenshotSettings,
-  locale: string,
+  settings: ImageSettings,
   id: string,
   references: { buffer: Buffer; mime: string }[],
   fetcher: typeof fetch = fetch,
 ): Promise<ImageReply> {
   const fields: Record<string, string | number> = {
     model: config.model,
-    prompt: generationPrompt(settings, locale),
+    prompt: settings.prompt,
     n: 1,
     size: settings.modelSize,
   };
@@ -113,7 +111,7 @@ export async function callImageModel(
     );
   } catch {
     throw new ImageGenerationError(
-      "模型请求中断或超时，远端是否计费未知。为防止重复计费，不会自动再次调用；可稍后明确选择生成新的候选。",
+      "模型请求中断或超时，远端是否计费未知。为防止重复计费，不会自动再次调用；可稍后明确选择生成新的图片。",
       true,
     );
   }

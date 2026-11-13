@@ -122,7 +122,7 @@ async function main() {
     const tasks = await (await fetch(base + "/api/jobs", { headers })).json();
     const task = tasks.jobs.find((j: { id: string }) => j.id === job.id);
     if (task?.status === "succeeded") {
-      assert.ok(task.logs.length >= 2);
+      assert.ok(task.logs.length >= 1);
       complete = true;
       break;
     }

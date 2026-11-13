@@ -1,12 +1,14 @@
 import { loadEnvConfig } from "@next/env";
-import { run } from "graphile-worker";
-import { pool } from "../lib/db";
-import { taskList } from "../lib/tasks";
+import { runWorker } from "../lib/worker";
+import { executeJob } from "../lib/tasks";
+import { closeDb } from "../lib/db";
 loadEnvConfig(process.cwd());
-run({ pgPool: pool(), concurrency: 2, taskList, pollInterval: 1000 }).catch(
-  (e) => {
-    console.error(e);
+const controller = new AbortController();
+process.once("SIGTERM", () => controller.abort());
+process.once("SIGINT", () => controller.abort());
+runWorker(executeJob, controller.signal)
+  .catch((error) => {
+    console.error(error);
     process.exitCode = 1;
-    void pool().end();
-  },
-);
+  })
+  .finally(closeDb);

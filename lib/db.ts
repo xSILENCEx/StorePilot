@@ -1,23 +1,32 @@
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-const globalDb = globalThis as unknown as { storepilotPool?: Pool };
-export function pool() {
-  if (!process.env.DATABASE_URL)
-    throw new Error("请先配置 DATABASE_URL 并运行 npm run db:migrate");
-  if (!globalDb.storepilotPool) {
-    globalDb.storepilotPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-    });
-    globalDb.storepilotPool.on("connect", (client) => {
-      client.on("error", () => console.error("PostgreSQL 客户端连接断开。"));
-    });
-    globalDb.storepilotPool.on("error", () =>
-      console.error("PostgreSQL 连接异常，请检查本机数据库进程。"),
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { mkdirSync, readFileSync, chmodSync } from "node:fs";
+import path from "node:path";
+const cache = globalThis as unknown as { storepilotSqlite?: Database.Database };
+export function sqlite() {
+  if (!cache.storepilotSqlite) {
+    // User data is created at runtime and must not be bundled into the server output.
+    const file = path.resolve(
+      /* turbopackIgnore: true */
+      process.env.DATABASE_PATH ?? "data/storepilot.sqlite",
     );
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    const connection = new Database(file);
+    chmodSync(file, 0o600);
+    connection.pragma("journal_mode = WAL");
+    connection.pragma("foreign_keys = ON");
+    connection.pragma("busy_timeout = 5000");
+    connection.exec(
+      readFileSync(path.join(process.cwd(), "db/schema.sql"), "utf8"),
+    );
+    cache.storepilotSqlite = connection;
   }
-  return globalDb.storepilotPool;
+  return cache.storepilotSqlite;
 }
 export function db() {
-  return drizzle(pool());
+  return drizzle(sqlite());
+}
+export function closeDb() {
+  cache.storepilotSqlite?.close();
+  delete cache.storepilotSqlite;
 }

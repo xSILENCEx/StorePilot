@@ -18,12 +18,11 @@ test("凭据加密绑定应用/平台，随机 IV，篡改与换密钥均不能�
   process.env.STOREPILOT_MASTER_KEY = randomBytes(32).toString("base64");
   assert.throws(() => decryptSecret(a, "apple:one"));
 });
-test("AI 配置拒绝凭据 URL、远程明文 HTTP 与过大并发", () => {
+test("AI 配置拒绝凭据 URL、远程明文 HTTP 与过大超时", () => {
   const fields = {
     baseUrl: "https://example.com/v1",
     model: "example",
     timeoutSeconds: 120,
-    concurrency: 2,
   };
   assert.ok(configFields.text.safeParse(fields).success);
   for (const baseUrl of [
@@ -42,7 +41,7 @@ test("AI 配置拒绝凭据 URL、远程明文 HTTP 与过大并发", () => {
     }).success,
   );
   assert.equal(
-    configFields.text.safeParse({ ...fields, concurrency: 99 }).success,
+    configFields.text.safeParse({ ...fields, timeoutSeconds: 999 }).success,
     false,
   );
 });

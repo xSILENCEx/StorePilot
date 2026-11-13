@@ -1,5 +1,7 @@
 import { createPrivateKey } from "node:crypto";
-import { pool } from "./db";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { connectionConfigs } from "./schema";
 import { configFields, type ConfigScope } from "./config-model";
 import { encryptSecret, decryptSecret } from "./secrets";
 import { HttpError } from "./http";
@@ -49,37 +51,30 @@ export function configId(scope: ConfigScope, appId?: string) {
   return `${scope}:${appId ?? "global"}`;
 }
 export async function readConfig(scope: ConfigScope, appId?: string) {
-  const {
-    rows: [row],
-  } = await pool().query(
-    "select fields,secret,revision,updated_at,verification from connection_configs where id=$1",
-    [configId(scope, appId)],
-  );
+  const row = db()
+    .select()
+    .from(connectionConfigs)
+    .where(eq(connectionConfigs.id, configId(scope, appId)))
+    .get();
+  const verification =
+    row?.verification?.revision === row?.revision ? row?.verification : null;
   return {
     fields: row?.fields ?? {},
     secretSaved: !!row?.secret,
     revision: row?.revision ?? 0,
     configured: !!row?.secret,
-    verified:
-      !!row?.secret &&
-      row.verification?.revision === row.revision &&
-      row.verification?.status === "passed",
-    verification:
-      row?.verification && row.verification.revision === row.revision
-        ? row.verification
-        : null,
+    verified: !!row?.secret && verification?.status === "passed",
+    verification,
     updatedAt: row?.updated_at ?? null,
   };
 }
-// 仅供服务端 Worker 调用；浏览器 GET 永不回传密钥。
 export async function workerConfig(scope: ConfigScope, appId?: string) {
   const id = configId(scope, appId);
-  const {
-    rows: [row],
-  } = await pool().query(
-    "select fields,secret,revision from connection_configs where id=$1",
-    [id],
-  );
+  const row = db()
+    .select()
+    .from(connectionConfigs)
+    .where(eq(connectionConfigs.id, id))
+    .get();
   if (!row?.secret) throw new Error("Configuration not found");
   return {
     revision: row.revision,
@@ -96,35 +91,36 @@ export async function saveConfig(
 ) {
   const parsed = configFields[scope].parse(fields);
   const id = configId(scope, appId);
-  const client = await pool().connect();
-  try {
-    await client.query("begin");
-    await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-      id,
-    ]);
-    const {
-      rows: [old],
-    } = await client.query(
-      "select revision,secret from connection_configs where id=$1",
-      [id],
-    );
-    if ((old?.revision ?? 0) !== revision)
-      throw new HttpError(409, "配置已被其他窗口修改，请重新载入后编辑");
-    let encrypted = old?.secret;
-    if (secret !== undefined && secret !== "") {
-      checkSecret(scope, secret);
-      encrypted = encryptSecret(secret, id);
-    }
-    if (!encrypted) throw new HttpError(400, "首次保存必须填写凭据");
-    await client.query(
-      "insert into connection_configs(id,scope,app_id,fields,secret,revision) values($1,$2,$3,$4,$5,$6) on conflict(id) do update set fields=excluded.fields,secret=excluded.secret,revision=excluded.revision,verification=null,updated_at=now()",
-      [id, scope, appId ?? null, parsed, encrypted, revision + 1],
-    );
-    await client.query("commit");
-  } catch (e) {
-    await client.query("rollback");
-    throw e;
-  } finally {
-    client.release();
-  }
+  db().transaction(
+    (tx) => {
+      const old = tx
+        .select()
+        .from(connectionConfigs)
+        .where(eq(connectionConfigs.id, id))
+        .get();
+      if ((old?.revision ?? 0) !== revision)
+        throw new HttpError(409, "配置已被其他窗口修改，请重新载入后编辑");
+      let encrypted = old?.secret;
+      if (secret) {
+        checkSecret(scope, secret);
+        encrypted = encryptSecret(secret, id);
+      }
+      if (!encrypted) throw new HttpError(400, "首次保存必须填写凭据");
+      const value = {
+        id,
+        scope,
+        app_id: appId ?? null,
+        fields: parsed,
+        secret: encrypted,
+        revision: revision + 1,
+        verification: null,
+        updated_at: new Date().toISOString(),
+      };
+      tx.insert(connectionConfigs)
+        .values(value)
+        .onConflictDoUpdate({ target: connectionConfigs.id, set: value })
+        .run();
+    },
+    { behavior: "immediate" },
+  );
 }

@@ -1,181 +1,125 @@
 # StorePilot
 
-在打包机上自托管的 Apple App Store / Google Play 商店资料工作台。产品方向见 [开发说明](./DEVELOPMENT.md)。
+在打包机上自托管的 Apple App Store / Google Play 商店资料工具。
 
-## 本次交付范围
+## 实现
 
-按本次确认，完成本机基础与服务端基础，商店和 AI 凭据稍后配置。
+- Next.js 提供页面和 API，Mantine 提供界面组件；SQLite 保存草稿、配置、任务与商店快照。
+- 一个独立 Node Worker 顺序执行持久化任务。无需数据库服务、Docker 或外部队列。
+- Better Auth 管理员登录，关闭公开注册；业务接口、素材和日志均需登录。
+- 商店与模型密钥使用 AES-256-GCM 加密，主密钥由本机环境提供。
+- 素材存于本机文件，Sharp 负责识别图片、格式标准化和大小检查。
 
-- 应用创建与设置、Apple / Google 独立语言草稿、文案编辑、截图上传与排序。
-- Better Auth 管理员登录，关闭公开注册；业务接口、素材与任务日志均需登录，响应禁止公共缓存。
-- PostgreSQL + Drizzle 草稿持久化；修订号阻止旧窗口覆盖新资料。保存失败暂停编辑并保留当前页面数据，可导出 JSON 备份。
-- 本机素材存储，PNG/JPEG 内容识别、20 MB / 4000 万像素限制、SHA-256 去重。
-- Graphile Worker 独立进程；冻结任务输入、按应用及平台串行、轮询状态、步骤日志、自动重试与失败后手动重试。当前真实任务是字段长度和素材可读性校验。
-- 旧版 localStorage 草稿可通过页面顶部入口导入；原数据保留。JSON 导出仅包含草稿及素材引用，不是完整备份。
+## 功能
 
-已提供商店与模型配置页面及凭据加密保存。已接通连接验证；尚未实现官方语言目录、设备截图合规校验、Google 远端拉取、冲突处理、差异推送及回读、元数据翻译、自动模板规划、多语言批量翻译、公网入口和开机启动。推送保持禁用。后台校验成功不等同于商店校验通过。
+- 应用、Apple / Google 独立语言草稿、文案编辑、截图上传、排序及移除。
+- 草稿自动保存与修订冲突检查，失败后暂停保存并保留页面内容，可导出 JSON。
+- Apple / Google 商店凭据与文本 / 图像模型配置、后台连接验证。
+- Apple 商店资料同步：应用信息、本地化元数据、按语言和设备分组的截图；支持差异查看与选择导入，保留本地草稿。
+- AI 图片生成：提示词 + 可选参考图，直接调用已配置的图像 API。
 
-## Apple 商店只读闭环（第一步）
-
-应用详情的 Apple Tab 新增「Apple 商店文案」：
-
-1. 在连接设置填好 Apple 凭据、应用平台与**明确的目标版本号**。
-2. 点击「拉取远端文案」。Worker 仅执行 GET：核对应用身份，分别读取应用级名称/副标题及目标版本描述/关键词，支持分页。
-3. 若存在多个应用资料版本，任务会列出 ID 与状态；在「应用资料 ID」中填写要读取的 ID 再拉取，不自动猜测。
-4. 展开语言查看草稿与远端差异（有同目标的上次快照时也显示上次远端）。点击「导入缺少的语言」走现有草稿自动保存流程；已有语言即使为空也不会覆盖，截图保持原样。
-
-每次成功拉取原子保存当前及上次快照；失败保留原快照和草稿。连接配置改变后旧快照标为过期，需重新拉取后才能导入。应用级和版本级语言不完整时显示提示。此阶段仅覆盖四个文案字段，不读取远端截图，不处理冲突选择、不写入 Apple，不根据状态推断可编辑权限。
-
-升级执行 `npm run db:migrate` 并重启 Worker。自动化验证：`npx tsx scripts/verify-apple-sync.ts`，创建后删除隔离测试数据库，用模拟 Apple 响应和真实 Worker 检查鉴权、队列、失败保留与配置竞态，不调用真实 Apple 服务。已用模拟数据通过浏览器差异展开与导入交互验证，真实 Apple 应用仍需只读验收。
-
-字段依据：[应用级本地化](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-appinfolocalizations-_id_)、[版本级本地化](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-appstoreversions-_id_-appstoreversionlocalizations)、[按平台及版本定位](https://developer.apple.com/documentation/appstoreconnectapi/uploading-app-previews)。
-
-## 手动配置商店与模型
-
-登录后打开 http://127.0.0.1:3000/settings ，或从工作台点击「连接与模型配置」。
-
-- Apple（按应用）：Issuer ID、Key ID、数字 Apple 应用 ID、Bundle ID、应用平台、可选目标版本，上传 `.p8` 或粘贴私钥。
-- Google（按应用）：包名，上传或粘贴 Google 服务账号 JSON。
-- 文本 / 图像模型（工作空间级，分别保存）：OpenAI 兼容 API Base URL、模型 ID、API Key、超时秒数、并发上限。本机模型地址支持 HTTP；远程地址需 HTTPS。
-
-首次保存必须提供凭据；之后密钥栏留空保留原值，填写或上传新内容则替换。密钥使用独立主密钥和 AES-256-GCM 加密入库，并绑定应用/平台；GET 只返回是否已保存，不返回明文或密文。草稿导出不包含凭据。支持清除配置与修订冲突检测。
-
-旧安装需先执行 `npm run config:key` 和 `npm run db:migrate`，然后重启 Web / Worker。本机本次已完成主密钥生成和迁移。主密钥位于 `.env.local` 的 `STOREPILOT_MASTER_KEY`；备份必须包含它，不能随意重新生成或替换。
-
-保存只做结构校验和加密存储。保存后点击卡片上的「验证连接」；任务由本机 Worker 执行，每 2 秒轮询，关闭页面后仍可继续，重新进入可查看结果与步骤。
-
-- Apple：使用 ES256 JWT 读取数字应用 ID，核对 Bundle ID。通过仅说明鉴权和应用读取正常，不代表写权限、截图上传或目标版本状态已验证。
-- Google「验证鉴权」：只获取服务账号 OAuth 令牌，成功显示「部分验证通过」，不创建 edit，尚未检查包名及应用权限。
-- Google「验证应用权限」：需先在页面确认临时 edit 的影响，然后创建 edit、读取本地化列表并删除本次 edit，不调用 commit。Google [官方文档](https://developers.google.com/resources/api-libraries/documentation/androidpublisher/v3/python/latest/androidpublisher_v3.edits.html)说明，新 edit 可能使该账号已有的 edit 失效；请避开其他正在进行的 API 编辑任务。清理失败会明确报告。
-- 文本 / 图像模型：携带已保存密钥访问 `/models`，检查模型 ID。未找到时为部分通过；不调用文本或图片生成接口，不能证明生成能力或余额充足。
-
-每次修改或清除配置都会使旧验证失效；执行中的旧任务也不能把结果写回新配置。失败会显示步骤、HTTP 状态或网络原因，修正后可重新验证。长期排队时检查 `npm run worker`。图像生成已在应用详情的 AI 截图工作室接通；Apple 文案只读拉取已接入；其余同步、推送和元数据翻译仍待后续开发。
-
-如本机出站需要代理，可在启动 Worker 的终端设置 `NODE_USE_ENV_PROXY=1`、`HTTPS_PROXY` / `HTTP_PROXY`，并设置 `NO_PROXY=127.0.0.1,localhost,::1` 后运行 `npm run worker`；所有验证请求仍由本机 Worker 发出。不要把密钥放入代理或 API URL。
-
-验证逻辑测试：`npm test`；持久化 Worker 验证：`npx tsx scripts/verify-connection-worker.ts`。后者使用模拟远端响应和独立测试行，不调用真实服务，不读取或改写用户已填写的配置。
-
-配置集成验证可运行 `npx tsx scripts/verify-configs.ts`：使用临时应用及测试凭据，检查四类配置、鉴权、加密、不回显、密钥保留与清除、修订冲突。已有工作空间模型配置会保留并跳过写入测试，不调用真实外部服务。
-
-## AI 生成图片与截图工作室
-
-进入应用详情，选择平台和语言，在元数据上方使用「AI 截图工作室」：
-
-1. 选择设备尺寸；每个平台、语言和设备都有独立的生成配置、候选与已采用截图。
-2. 上传或选择真实 App 截图、美术参考图，填写主标题、副文案、提示词，调整固定模板、颜色、输出格式及模型请求尺寸 / 质量。
-3. 保存配置，或直接点击生成（会先保存）。已保存配置在 PostgreSQL；未保存输入会留在当前浏览器暂存，切换设备或语言后可恢复，旧修订不会覆盖另一窗口的新配置。
-4. 后台生成后在候选区预览。点击「追加采用」或「替换整组」后才会改变已采用截图；支持排序、移除、恢复上次结果（包括恢复为空）、下载原尺寸文件。
-5. 也可以上传成品截图：校验当前设备尺寸、PNG/JPEG、不含透明通道及 8 MB 上限，再进入候选区供采用。
-
-三种方式：
-
-| 方式                 | 行为                                                                                                                                                                              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AI 背景 + 真实截图   | 图像模型生成背景，真实 App 截图留在本机，由共享 React 模板叠加文字与截图。美术参考图如已选择，会通过图像编辑接口发送给模型。                                                      |
-| AI 整图 / 参考图改图 | 无参考图时使用 `/images/generations`；选择参考图时使用 multipart `/images/edits`。选择的真实截图与美术图会发送到已配置服务，结果明确标注为 AI 整图 / 改图，需人工核对 UI 与文字。 |
-| 仅固定模板渲染       | 不调用模型，在本机使用 Chromium 渲染；真实截图和文案不发送到模型服务。                                                                                                            |
-
-接口沿用设置页面的模型 ID、API 地址、密钥与超时，不替换用户模型。协议参考 [OpenAI Images 生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate)及[编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)，第三方服务需兼容相同接口。支持 `data[0].b64_json` 或 HTTPS 公网图片 URL；下载不携带模型密钥，限制大小并阻止内网地址、重定向泄露。模型响应先持久化，最终输出经 Sharp 转为 sRGB、不透明 PNG/JPEG，复检目标尺寸和 8 MB 上限，另存缩略图。过长模板文案会报错，不静默输出被截断的文字。
-
-每次点击生成仅请求一张，每组最多同时排队四张；任务由独立 Worker 执行，轮询刷新，关页后继续。图像任务按模型并发上限分队列，实际并发还受 Worker 的总并发（当前 2）限制。真实截图与模板渲染预检先于付费背景请求。
-
-- 已有 AI 原图可点击「用当前配置重渲染」修改文案、模板或输出格式，不再次调用模型。
-- 处理失败后使用「仅重试已保存结果处理」，复用已有原图 / 模型响应。返回的临时下载 URL 若已过期，可能需要用户明确发起新生成。
-- 请求已发送但没有可靠响应时显示「调用结果未知」，不会自动再次请求；「按此配置重新生成」明确创建新的模型调用，可能再次计费。请求 ID 防止重复入队，调用记录和响应检查点用于重启恢复。
-- 生成期间改变模型配置会使尚未调用模型的旧任务失败；已有响应仍可继续处理，不需要原密钥。
-- 隐藏候选可恢复；已采用及用于上次恢复的候选不能隐藏。当前保留共享素材，不做危险的物理文件回收。
-
-设备预设是已实现的固定尺寸子集，并非完整商店规格目录。Apple 尺寸参考[官方截图规格](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)，Google 参考[官方预览素材说明](https://support.google.com/googleplay/android-developer/answer/9866151?hl=en)。这里的校验不代表商店完整审核 / 合规预检通过，推送仍禁用。
-
-安装后需准备后台渲染运行时：`npx playwright install chromium`。本机已安装在 `~/Library/Caches/ms-playwright/`，包括测试版 Chromium、Headless Shell 和 Playwright 附带的 FFmpeg，不替换日常浏览器。原有未分类截图继续保留在工作室下方，可作为参考素材使用。
-
-开发验证：`npm run verify:images`。测试自动创建并删除独立 PostgreSQL 测试库和临时素材目录，用模拟模型响应、真实 Graphile Worker 与 Chromium 验证生成 / 编辑、候选采用与恢复、幂等、原图复用及防重复付费；不会读取或修改用户资料 / 模型配置，不调用真实付费模型。需要数据库账号具备创建测试库的权限。示例输出保留在 `data/verification/image-studio-template.png`。
-
-尚未实现元数据翻译、自动 AI 模板规划或跨语言自动翻译；模板文字可以手动按语言编辑后渲染。
+尚未实现商店推送、元数据翻译和完整商店素材合规检查。推送按钮保持禁用。
 
 ## 首次启动
 
-需要 Node.js 24 和 npm。本机数据库通过 `embedded-postgres` 启动真实 PostgreSQL，不要求 Docker；数据库与业务进程仍然独立运行。
+需要 Node.js 24 和 npm：
 
 ```sh
 npm install
 npm run setup:local
-npm run db:local
-```
-
-保持数据库终端运行，另开终端执行：
-
-```sh
 npm run db:migrate
 npm run admin:bootstrap
-npx playwright install chromium
-npm run dev
 ```
 
-再开一个终端运行 Worker：
+初始随机管理员账号保存在 `data/admin-login.json`（权限 `0600`）。已有管理员时不会覆盖。
+
+开发时分别运行：
 
 ```sh
+npm run dev
 npm run worker
 ```
 
-打开 http://127.0.0.1:3000/login 。初始随机管理员邮箱及密码在 `data/admin-login.json`，文件权限为 `0600`；请本机查看。已存在管理员时，bootstrap 不会覆盖账号。也可临时设置 `ADMIN_EMAIL`、`ADMIN_PASSWORD` 后运行 `npm run admin:create` 创建其他管理员，密码至少 12 字符。
+打开 http://127.0.0.1:3000/login 。不需要单独启动数据库，也不需要安装 Chromium。
 
-`setup:local` 创建随机数据库密码及会话密钥，保存在仅本机用户可读的 `.env.local`；已有文件时不会覆盖。`data/` 和环境文件已从 Git 排除。请不要将管理员明文密码长期放入环境文件。
-
-## 后续启动与生产运行
-
-日常使用推荐独立后台服务，不依赖终端或工具会话的输出管道：
+生产运行：
 
 ```sh
-# 首次安装或修改代码后，先构建；构建时请先停止后台 Web
 npm run build
 npm run services:start
 npm run services:status
-# 停止本脚本启动的服务（资料保留）
+# 停止 Web 与 Worker，保留数据
 npm run services:stop
 ```
 
-`services:start` 使用生产模式，重复执行不会重复创建已管理的进程。若本机数据库尚未启动，会自动启动 `db:local`；数据库已由其他终端启动时只复用，不接管或停止该进程。外部数据库必须预先可连接。首次安装仍需按上文执行初始化、迁移和创建管理员。
+后台脚本启动两个进程，关闭终端后继续运行，日志位于 `data/logs/web.log` 和 `worker.log`。更新代码时先停止服务，再构建并启动。尚未配置开机启动。
 
-Web、Worker 和必要时启动的数据库各自独立运行，关闭启动终端后继续运行；日志写入 `data/logs/web.log`、`worker.log`、`database.log`，进程记录位于 `data/services.json`。Web 只监听 `127.0.0.1:3000`。如提示 3000 端口被非本脚本管理的进程占用，先停止之前手动运行的 `npm run dev` / `npm start`，再运行启动命令。
+`setup:local` 生成 `.env.local`，包含会话密钥和凭据加密主密钥；已有文件保持原样。SQLite 默认路径为 `data/storepilot.sqlite`，可通过 `DATABASE_PATH` 修改。
 
-开发时仍可分别在终端运行 `npm run db:local`、`npm run dev`、`npm run worker`。不要同时启动开发 Web 与后台生产 Web。修改代码后需先停止后台 Web，重新构建，再启动，才能使用新的生产构建。
+## AI 生成图片
 
-本机数据库监听 `127.0.0.1:55432`，数据在 `data/postgres`，图片在 `data/assets`，队列存于同一 PostgreSQL。更换外部 PostgreSQL 时更新 `DATABASE_URL` 并执行迁移；更换访问地址时同步更新 `BETTER_AUTH_URL`。这些命令不会安装开机启动项；系统重启后需再次执行 `services:start`。
+1. 在「连接与模型」页面，打开图像模型卡片的「管理配置」，填写图像 API 地址、模型 ID、API Key 和超时。
+2. 打开应用并选择平台及语言，点击截图区的「AI 生成」。在弹窗的「描述画面」页填写提示词，画面、文字和构图全部写入提示词。
+3. 可选择已有截图或上传参考图，最多四张；选中的图片会发送到已配置服务。尺寸、质量位于可展开的「高级选项」。
+4. 点击「生成一张图片」后进入「查看结果」。可关闭弹窗等待，再次打开查看；点击结果进入二级预览，下载或加入商店截图。
 
-如果端口存在但页面一直超时，查看 `data/logs/web.log`。曾出现旧开发进程输出管道断开导致 `write EPIPE` 和请求无响应；后台模式把输出固定到文件，避免依赖已结束的工具会话。运行 `services:stop` 后再 `services:start` 可重启托管进程。
+无参考图调用 `/images/generations`；有参考图调用 multipart `/images/edits`。提示词原样传递，一次请求一张。服务需兼容 Images API，返回 `data[0].b64_json` 或 HTTPS 公网图片 URL。
+
+不使用本机模板、文字叠加或浏览器渲染。输出保留模型生成尺寸，经 Sharp 转为不透明 sRGB PNG。请人工核对文字、真实 UI 和商店要求；不会把模型图片强制缩放成某一设备尺寸。
+
+同一时间最多保留四个排队/执行中的图片任务，由 Worker 顺序处理。关闭页面不影响执行，重新进入可查看结果。请求 ID 防止相同提交重复入队。模型请求发出前记录状态，响应先保存到本机；Worker 中断后可恢复已有响应，无可靠响应时标记「调用结果未知」，不自动重发付费请求。失败后需要新图时再次点击生成，会创建新的调用。
+
+删除生成记录不会删除已加入草稿的图片文件。截图列表支持排序和移除；上传素材支持静态 PNG/JPEG，最多 20 MB / 4000 万像素。当前不做素材物理回收。
+
+## 连接与商店读取
+
+- Apple（按应用）：Issuer ID、Key ID、数字应用 ID、Bundle ID、平台及目标版本，上传或粘贴 `.p8` 私钥。目标版本可留空：优先读取已上架版本，没有已上架版本时读取最新版本；填写时严格读取指定版本。
+- Google（按应用）：包名与服务账号 JSON。
+- 文本 / 图像模型（工作空间级）：OpenAI 兼容 Base URL、模型 ID、API Key、超时。远程地址使用 HTTPS，本机模型可使用 HTTP。
+
+首次保存必须提供凭据；之后密钥留空保留原值。GET 和草稿导出均不返回凭据。修改或清除配置会使旧验证失效，旧任务不会覆盖新配置的验证结果。
+
+连接验证范围：Apple 读取应用并核对 Bundle ID；Google 默认只获取 OAuth 令牌；模型只读取 `/models`。它们不证明截图上传、推送或模型生成一定成功。
+
+Google「验证应用权限」需在页面确认后执行：创建临时 edit、读取本地化列表、删除该 edit，不 commit。创建 edit 可能影响同账号已有 edit，请避开其他编辑任务。进程中断时不会自动重做该验证，需先检查远端 edit 状态。
+
+所有商店和模型请求由打包机 Worker 发出。若本机出站需要代理，可设置 `NODE_USE_ENV_PROXY=1`、`HTTPS_PROXY` / `HTTP_PROXY`，并将本机地址加入 `NO_PROXY`。
+
+## Apple 商店资料同步
+
+在应用详情点击「商店资料」，再点击「同步商店资料」。此操作只读取 App Store，不修改或发布远端内容。连接中的目标版本可留空；自动选择优先已上架版本，否则为最新版本，并匹配该版本对应的应用资料。
+
+- 本地化元数据：名称、副标题、描述、关键词、推广文本、版本更新说明、支持 / 营销 / 隐私政策 / 隐私选择网址。
+- 应用信息：主要语言、SKU、版本、平台、版权、发布方式、分类与年龄分级（以 API 返回内容为准）。
+- 商店截图：保存到本机，按语言、设备类别及商店展示顺序查看，支持预览、下载和按组加入本地截图。
+
+新增语言可批量补充元数据；更新已有语言需点击「导入当前语言」并确认，保留其已有截图。导入截图只追加已选设备组，不移除原图。
+
+优先读取 Apple App Asset Library placements；对尚未提供新关系的资料使用现有截图集合接口。下载图片不携带 API 凭据，素材通过本机鉴权接口读取。同一截图后续同步复用本地文件；截图下载失败时保留上次成功的完整快照。
 
 ## 验证
 
 ```sh
-npm run typecheck
-npm test
-npm run build
-npm audit
+npm run verify
+# 仅运行隔离的 SQLite / 登录 / 图片 / Worker / Apple 工作流验证
+npm run verify:images
 ```
 
-数据库、Web 和 Worker 启动后，可运行本机集成验证：
+测试使用临时 SQLite、临时素材和模拟外部 API，不读取用户资料，不调用付费模型。覆盖登录与来源校验、草稿冲突、素材鉴权、生成去重、图像编辑、调用结果未知、响应恢复、独立 Worker 进程及 Apple 快照保存。
 
-```sh
-npx tsx scripts/verify-local.ts
-```
-
-该脚本读取初始管理员文件，检查登录与关闭注册、接口鉴权、来源校验、草稿保存、旧修订冲突、图片去重和鉴权、Worker 执行与日志。它创建测试应用后删除该测试应用；测试素材和任务记录保留，便于检查。
-
-验证重启恢复（本机开发环境执行）：先停止 Worker，运行 `npx tsx scripts/verify-restart.ts prepare`，正常停止并重启数据库、重启 Worker，再运行 `npx tsx scripts/verify-restart.ts check`。该验证确认草稿修订及内容不变、停机期间入队的任务能恢复执行。
-
-本次已通过类型检查、单元测试、生产构建、API 集成与数据库/Worker 重启验证。浏览器自动化通道不可用，页面视觉和交互仍需人工验收。
+Web 与 Worker 启动后，也可运行 `npx tsx scripts/verify-local.ts` 检查实际 HTTP 登录、保存、上传和任务执行。
 
 ## 数据与备份
 
-本机阶段如需完整冷备份，先依次停止 Web、Worker、数据库，备份 `data/postgres`、`data/assets`、`data/image-responses` 和 `.env.local`，恢复时保持配套。不要直接复制运行中的 PostgreSQL 数据目录。恢复 PostgreSQL 数据目录需要相同 PostgreSQL 主版本及兼容的平台；跨版本/机器迁移应使用 PostgreSQL 官方备份工具。
+先执行 `npm run services:stop`，再备份 `data/` 和 `.env.local`。开发模式需手动停止 Web 和 Worker。SQLite 的 `-wal` / `-shm` 文件若存在应一起备份；不要只复制运行中的主数据库文件。恢复时数据库、素材、图像响应与加密主密钥需配套。
 
-`data/admin-login.json` 是初始登录信息，并非数据库恢复必需项；如保留，请和数据库、环境密钥一样安全存放。公网访问、自动备份、恢复演练及开机启动仍属于后续部署阶段。
+JSON 导出仅包含草稿及素材引用，不是完整备份。`data/` 和本机环境文件不会提交到 Git。本版不提供旧 PostgreSQL 数据迁移。
 
 ## 目录
 
-- `app/`：工作台、登录与鉴权 API。
-- `lib/`：数据模型、Drizzle 表定义、登录、素材、任务实现、保存状态。
-- `db/`：基础表、凭据配置、连接验证、截图组、候选、调用记录与恢复历史的迁移；登录与队列使用各自官方迁移。
-- `scripts/`：本机初始化、数据库、管理员、迁移、Worker 与验证入口。
-- `tests/`：输入边界与平台字段校验测试。
+- `app/`：页面与鉴权 API。
+- `components/`：Mantine 主题与工作空间布局、截图列表、AI 生成弹窗、Apple 商店资料和任务抽屉。
+- `lib/`：SQLite、数据模型、配置、商店与模型调用、任务执行。
+- `db/schema.sql`：全新安装的业务表定义；登录表由 Better Auth 初始化。
+- `scripts/`：初始化、管理员、Worker 和后台进程管理。
+- `tests/`：输入边界、API 适配器及隔离工作流测试。

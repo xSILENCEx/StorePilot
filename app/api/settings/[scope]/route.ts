@@ -4,7 +4,9 @@ import { failure, HttpError, json } from "../../../../lib/http";
 import { configInput } from "../../../../lib/config-model";
 import { readConfig, saveConfig, configId } from "../../../../lib/config-store";
 import { secretsReady } from "../../../../lib/secrets";
-import { pool } from "../../../../lib/db";
+import { db } from "../../../../lib/db";
+import { connectionConfigs } from "../../../../lib/schema";
+import { and, eq } from "drizzle-orm";
 export async function GET(
   request: Request,
   context: { params: Promise<{ scope: string }> },
@@ -51,11 +53,23 @@ export async function DELETE(
       .int()
       .positive()
       .parse((await request.json()).revision);
-    const result = await pool().query(
-      "update connection_configs set secret='',fields='{}'::jsonb,verification=null,revision=revision+1,updated_at=now() where id=$1 and revision=$2",
-      [configId(scope, appId), revision],
-    );
-    if (!result.rowCount) throw new HttpError(409, "配置已变更，请重新载入");
+    const result = db()
+      .update(connectionConfigs)
+      .set({
+        secret: "",
+        fields: {},
+        verification: null,
+        revision: revision + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(connectionConfigs.id, configId(scope, appId)),
+          eq(connectionConfigs.revision, revision),
+        ),
+      )
+      .run();
+    if (!result.changes) throw new HttpError(409, "配置已变更，请重新载入");
     return json({ deleted: true });
   } catch (e) {
     return failure(e);

@@ -148,24 +148,18 @@ async function main() {
   if (action !== "status") await lock();
   try {
     const records = await state();
-    const database = new URL(process.env.DATABASE_URL ?? "");
-    const databasePort = Number(database.port || 5432);
     if (action === "status") {
-      for (const name of ["database", "web", "worker"])
+      for (const name of ["web", "worker"])
         console.log(
           `${name}: ${alive(records[name]) ? "运行中（PID " + records[name].pid + "）" : "未由本脚本运行"}`,
         );
-      console.log(
-        `数据库端口：${(await portReady(database.hostname, databasePort)) ? "可连接" : "不可连接"}`,
-      );
       console.log(
         `网页：${(await webReady()) ? "正常 http://127.0.0.1:3000" : "未响应"}`,
       );
       return;
     }
     if (action === "stop") {
-      for (const name of ["web", "worker", "database"])
-        await stopService(name, records);
+      for (const name of ["web", "worker"]) await stopService(name, records);
       await store(records);
       console.log("已停止本脚本管理的服务，数据库和素材保留。");
       return;
@@ -173,16 +167,6 @@ async function main() {
     await access(".next/BUILD_ID").catch(() => {
       throw new Error("缺少生产构建，请先运行 npm run build");
     });
-    if (!(await portReady(database.hostname, databasePort))) {
-      if (database.hostname !== "127.0.0.1")
-        throw new Error("外部数据库不可连接，请先恢复数据库");
-      await launch(
-        "database",
-        ["--import", "tsx", path.join(root, "scripts/local-db.ts")],
-        records,
-      );
-      await waitFor(() => portReady(database.hostname, databasePort), "数据库");
-    }
     if (!alive(records.web) && (await portReady("127.0.0.1", 3000)))
       throw new Error(
         "3000 端口被非本脚本管理的进程占用，请先停止对应 Web 服务，避免重复启动",
@@ -207,9 +191,7 @@ async function main() {
     if (!alive(records.worker))
       throw new Error("Worker 启动失败，请检查 data/logs/worker.log");
     console.log("StorePilot 已启动：http://127.0.0.1:3000");
-    console.log(
-      "服务独立于当前终端运行；日志：data/logs/{web,worker,database}.log",
-    );
+    console.log("服务独立于当前终端运行；日志：data/logs/{web,worker}.log");
   } finally {
     if (action !== "status") await unlink(lockPath).catch(() => {});
   }

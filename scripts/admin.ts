@@ -1,6 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 import { auth } from "../lib/auth";
-import { pool } from "../lib/db";
+import { closeDb } from "../lib/db";
 loadEnvConfig(process.cwd());
 async function main() {
   const email = process.env.ADMIN_EMAIL;
@@ -19,4 +19,4 @@ main()
     console.error(e instanceof Error ? e.message : "创建失败");
     process.exitCode = 1;
   })
-  .finally(() => pool().end());
+  .finally(closeDb);

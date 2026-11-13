@@ -36,7 +36,7 @@ export const configFields = {
         .regex(/^\d+$/, "填写 App Store Connect 中的数字应用 ID"),
       bundleId: z.string().trim().min(1).max(255),
       appPlatform: z.enum(["IOS", "MAC_OS", "TV_OS", "VISION_OS"]),
-      version: z.string().trim().max(100),
+      version: z.string().trim().max(100).default(""),
     })
     .strict(),
   google: z
@@ -55,7 +55,6 @@ export const configFields = {
       baseUrl: endpoint,
       model: z.string().trim().min(1).max(200),
       timeoutSeconds: z.number().int().min(10).max(600),
-      concurrency: z.number().int().min(1).max(8),
     })
     .strict(),
   image: z
@@ -63,7 +62,6 @@ export const configFields = {
       baseUrl: endpoint,
       model: z.string().trim().min(1).max(200),
       timeoutSeconds: z.number().int().min(10).max(600),
-      concurrency: z.number().int().min(1).max(8),
     })
     .strict(),
 };

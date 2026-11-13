@@ -6,7 +6,9 @@ import { db } from "./db";
 import { assets } from "./schema";
 export function assetPath(id: string) {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("Invalid asset id");
+  // Runtime assets are private data, not build inputs.
   return path.join(
+    /* turbopackIgnore: true */
     process.env.STORAGE_PATH ?? path.join(process.cwd(), "data/assets"),
     id,
   );

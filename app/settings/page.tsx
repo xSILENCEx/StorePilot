@@ -1,5 +1,36 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Accordion,
+  Alert,
+  Badge,
+  Button,
+  FileButton,
+  Group,
+  Loader,
+  Modal,
+  NativeSelect,
+  NumberInput,
+  Paper,
+  PasswordInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  ThemeIcon,
+  Title,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import {
+  Check,
+  ChevronRight,
+  KeyRound,
+  Settings2,
+  Sparkles,
+} from "lucide-react";
+import { WorkspaceShell } from "../../components/workspace-shell";
 import type { ConfigScope } from "../../lib/config-model";
 type Verification = {
   status: string;
@@ -45,7 +76,7 @@ const definitions: Record<
       {
         key: "version",
         label: "目标版本（可留空）",
-        hint: "后续同步时选择可编辑版本，不提交审核或发布",
+        hint: "留空自动读取已上架版本；没有已上架版本时读取最新版本",
       },
     ],
     secret: "App Store Connect API 私钥（.p8）",
@@ -76,10 +107,9 @@ const definitions: Record<
       },
       { key: "model", label: "模型 ID" },
       { key: "timeoutSeconds", label: "超时（秒，10–600）", type: "number" },
-      { key: "concurrency", label: "并发上限（1–8）", type: "number" },
     ],
     secret: "文本模型 API Key",
-    defaults: { baseUrl: "", model: "", timeoutSeconds: 120, concurrency: 2 },
+    defaults: { baseUrl: "", model: "", timeoutSeconds: 120 },
   },
   image: {
     title: "图像模型",
@@ -91,13 +121,22 @@ const definitions: Record<
       },
       { key: "model", label: "模型 ID" },
       { key: "timeoutSeconds", label: "超时（秒，10–600）", type: "number" },
-      { key: "concurrency", label: "并发上限（1–8）", type: "number" },
     ],
     secret: "图像模型 API Key",
-    defaults: { baseUrl: "", model: "", timeoutSeconds: 300, concurrency: 1 },
+    defaults: { baseUrl: "", model: "", timeoutSeconds: 300 },
   },
 };
-function ConfigForm({ scope, app }: { scope: ConfigScope; app?: App }) {
+function ConfigForm({
+  scope,
+  app,
+  onDirty,
+  onSaved,
+}: {
+  scope: ConfigScope;
+  app?: App;
+  onDirty: (dirty: boolean) => void;
+  onSaved: () => void;
+}) {
   const def = definitions[scope];
   const endpoint = `/api/settings/${scope}${app ? `?appId=${encodeURIComponent(app.id)}` : ""}`;
   const defaults = {
@@ -117,79 +156,25 @@ function ConfigForm({ scope, app }: { scope: ConfigScope; app?: App }) {
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
-  const [updated, setUpdated] = useState<string | null>(null);
   const [encryption, setEncryption] = useState(true);
   const [verification, setVerification] = useState<Verification | null>(null);
+  const [confirmGoogle, setConfirmGoogle] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const verifying =
     verification?.status === "queued" || verification?.status === "running";
   useEffect(() => {
-    if (!verifying) return;
-    const timer = setInterval(() => {
-      void fetch(endpoint, { cache: "no-store" })
-        .then(async (r) => {
-          if (!r.ok) throw new Error();
-          const data = await r.json();
-          if (data.revision !== revision) {
-            setVerification(null);
-            setMessage("配置已被其他窗口修改，请重新载入");
-            return;
-          }
-          setVerification(data.verification);
-        })
-        .catch(() =>
-          setMessage("暂时无法读取验证状态，稍后自动重试；任务仍在后台运行。"),
-        );
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [endpoint, verifying, revision]);
-  async function verify(verifyApplication = false) {
-    if (
-      verifyApplication &&
-      !confirm(
-        "Google 应用权限验证会创建并删除一个临时 edit，可能使该服务账号已有的未提交 edit 失效。请确认没有正在进行的 Google API 编辑任务。继续验证？",
-      )
-    )
-      return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const r = await fetch(
-        endpoint.replace("?", "/verify?") +
-          (endpoint.includes("?") ? "" : "/verify"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ revision, verifyApplication }),
-        },
-      );
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
-      setVerification({
-        status: "queued",
-        message: "验证已入队，等待本机 Worker",
-        jobId: data.id,
-      });
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "验证请求失败");
-    } finally {
-      setBusy(false);
-    }
-  }
+    onDirty(dirty);
+  }, [dirty, onDirty]);
   async function load() {
     setReady(false);
     setMessage("");
     try {
       const r = await fetch(endpoint, { cache: "no-store" });
-      if (r.status === 401) {
-        location.href = "/login";
-        return;
-      }
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       setFields({ ...defaults, ...data.fields });
       setRevision(data.revision);
       setSavedSecret(data.secretSaved);
-      setUpdated(data.updatedAt);
       setEncryption(data.encryptionReady);
       setVerification(data.verification);
       setSecret("");
@@ -201,14 +186,41 @@ function ConfigForm({ scope, app }: { scope: ConfigScope; app?: App }) {
   }
   useEffect(() => {
     void load();
-  }, [endpoint]); // 表单按 scope/appId 挂载
+  }, [endpoint]);
   useEffect(() => {
-    function warn(e: BeforeUnloadEvent) {
+    const warn = (e: BeforeUnloadEvent) => {
       if (dirty) e.preventDefault();
-    }
+    };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+  useEffect(() => {
+    if (!verifying) return;
+    let active = true;
+    const timer = setInterval(() => {
+      void fetch(endpoint, { cache: "no-store" })
+        .then(async (r) => {
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error);
+          if (!active) return;
+          if (data.revision !== revision) {
+            setVerification(null);
+            setMessage("配置已被其他窗口修改，请关闭并重新打开配置。");
+            return;
+          }
+          setVerification(data.verification);
+          if (!["queued", "running"].includes(data.verification?.status ?? ""))
+            onSaved();
+        })
+        .catch(() => {
+          if (active) setMessage("暂时无法读取验证状态，稍后自动重试。");
+        });
+    }, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [endpoint, verifying, revision, onSaved]);
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -227,20 +239,50 @@ function ConfigForm({ scope, app }: { scope: ConfigScope; app?: App }) {
       if (!r.ok) throw new Error(data.error);
       setRevision(data.revision);
       setSavedSecret(data.secretSaved);
-      setUpdated(data.updatedAt);
       setSecret("");
       setDirty(false);
       setVerification(data.verification);
-      setMessage("配置已保存，请点击验证连接。");
+      onSaved();
+      notifications.show({
+        title: "配置已保存",
+        message: "可以继续验证连接。",
+        icon: <Check size={16} />,
+      });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "保存失败");
     } finally {
       setBusy(false);
     }
   }
-  async function remove() {
-    if (!confirm(`清除${def.title}的全部已保存配置及密钥？`)) return;
+  async function verify(verifyApplication = false) {
     setBusy(true);
+    setMessage("");
+    setConfirmGoogle(false);
+    try {
+      const url = `/api/settings/${scope}/verify${app ? `?appId=${encodeURIComponent(app.id)}` : ""}`;
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revision, verifyApplication }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      setVerification({
+        status: "queued",
+        message: "验证任务已入队",
+        jobId: data.id,
+      });
+      onSaved();
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "验证失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    setBusy(true);
+    setConfirmDelete(false);
+    setMessage("");
     try {
       const r = await fetch(endpoint, {
         method: "DELETE",
@@ -250,255 +292,437 @@ function ConfigForm({ scope, app }: { scope: ConfigScope; app?: App }) {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       await load();
-      setMessage("配置已清除");
+      onSaved();
+      notifications.show({ message: "配置已清除" });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "清除失败");
     } finally {
       setBusy(false);
     }
   }
+  function change(key: string, value: string | number) {
+    setFields((current) => ({ ...current, [key]: value }));
+    setDirty(true);
+  }
   return (
-    <form className="config-card" onSubmit={save} autoComplete="off">
-      <div className="section-title">
-        <h2>{def.title}</h2>
-        <span className="badge">
-          {!savedSecret
-            ? "未配置"
-            : dirty
-              ? "有未保存修改"
-              : verification?.status === "passed"
-                ? "连接验证通过"
-                : verification?.status === "partial"
-                  ? "部分验证通过"
-                  : verification?.status === "failed"
-                    ? "验证失败"
-                    : verifying
-                      ? "验证中"
-                      : "已填写 · 未验证"}
-        </span>
-      </div>
-      <p>
-        {scope === "text" || scope === "image"
-          ? "验证 API 鉴权和模型目录；不发送生成请求，生成能力与额度尚未验证。"
-          : "验证商店鉴权与应用读取；不会上传资料、提交审核或发布版本。"}
-      </p>
-      {!encryption && (
-        <div className="warning">
-          加密主密钥未就绪：请运行 npm run config:key 后重启 Web / Worker。
-        </div>
-      )}
-      {scope === "apple" && (
-        <p>
-          <a
-            className="export"
-            href="https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Apple API 密钥获取说明 ↗
-          </a>
-        </p>
-      )}
-      {scope === "google" && (
-        <p>
-          <a
-            className="export"
-            href="https://docs.cloud.google.com/iam/docs/keys-create-delete"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Google 服务账号密钥获取说明 ↗
-          </a>
-        </p>
-      )}
-      <fieldset disabled={!ready || busy}>
-        <div className="fields">
-          {def.fields.map((f) => (
-            <label key={f.key}>
-              <span>{f.label}</span>
-              {f.options ? (
-                <select
-                  value={fields[f.key] ?? ""}
-                  onChange={(e) => {
-                    setFields({ ...fields, [f.key]: e.target.value });
-                    setDirty(true);
-                  }}
-                >
-                  {f.options.map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  required={f.key !== "version"}
-                  type={f.type ?? "text"}
-                  min={
-                    f.key === "concurrency"
-                      ? 1
-                      : f.type === "number"
-                        ? 10
-                        : undefined
+    <form onSubmit={save} autoComplete="off">
+      <Stack gap="lg">
+        <Text size="sm" c="dimmed">
+          {scope === "text" || scope === "image"
+            ? "工作空间共享。使用 OpenAI 兼容 API，密钥加密保存在本机。"
+            : "当前应用独立配置。密钥加密保存，不通过读取接口回显。"}
+        </Text>
+        {message && <Alert color="orange">{message}</Alert>}
+        {!encryption && (
+          <Alert color="red">
+            加密主密钥未就绪，请运行 npm run config:key 并重启服务。
+          </Alert>
+        )}
+        {!ready && !message ? (
+          <Loader size="sm" />
+        ) : (
+          <>
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              {def.fields.map((f) =>
+                f.options ? (
+                  <NativeSelect
+                    key={f.key}
+                    label={f.label}
+                    description={f.hint}
+                    data={f.options}
+                    value={fields[f.key] ?? ""}
+                    disabled={!ready || busy}
+                    onChange={(e) => change(f.key, e.currentTarget.value)}
+                  />
+                ) : f.type === "number" ? (
+                  <NumberInput
+                    key={f.key}
+                    label={f.label}
+                    description={f.hint}
+                    min={10}
+                    max={600}
+                    allowDecimal={false}
+                    value={fields[f.key] ?? ""}
+                    disabled={!ready || busy}
+                    onChange={(value) => change(f.key, value)}
+                  />
+                ) : (
+                  <TextInput
+                    key={f.key}
+                    label={f.label}
+                    description={f.hint}
+                    required={f.key !== "version"}
+                    value={fields[f.key] ?? ""}
+                    disabled={!ready || busy}
+                    onChange={(e) => change(f.key, e.currentTarget.value)}
+                  />
+                ),
+              )}
+            </SimpleGrid>
+            {def.file ? (
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" fw={550}>
+                    {def.secret}
+                  </Text>
+                  <FileButton
+                    accept={def.file}
+                    onChange={async (file) => {
+                      if (!file) return;
+                      if (file.size > 65536) {
+                        setMessage("凭据文件不能超过 64 KB");
+                        return;
+                      }
+                      try {
+                        setSecret(await file.text());
+                        setDirty(true);
+                      } catch {
+                        setMessage("文件读取失败");
+                      }
+                    }}
+                  >
+                    {(props) => (
+                      <Button
+                        {...props}
+                        size="xs"
+                        variant="default"
+                        disabled={!ready || busy}
+                      >
+                        上传凭据文件
+                      </Button>
+                    )}
+                  </FileButton>
+                </Group>
+                <Textarea
+                  aria-label={def.secret}
+                  description={
+                    savedSecret
+                      ? "已保存，留空保留原凭据"
+                      : "可上传文件或粘贴凭据"
                   }
-                  max={
-                    f.key === "concurrency"
-                      ? 8
-                      : f.type === "number"
-                        ? 600
-                        : undefined
-                  }
-                  value={fields[f.key] ?? ""}
+                  rows={4}
+                  value={secret}
+                  spellCheck={false}
+                  disabled={!ready || busy}
                   onChange={(e) => {
-                    setFields({
-                      ...fields,
-                      [f.key]:
-                        f.type === "number"
-                          ? e.target.value === ""
-                            ? ""
-                            : Number(e.target.value)
-                          : e.target.value,
-                    });
+                    setSecret(e.currentTarget.value);
                     setDirty(true);
                   }}
                 />
-              )}
-              {f.hint && <small>{f.hint}</small>}
-            </label>
-          ))}
-        </div>
-        <label className="secret-field">
-          <span>
-            {def.secret} {savedSecret && "（已保存，留空保留）"}
-          </span>
-          {def.file ? (
-            <>
-              <input
-                type="file"
-                accept={def.file}
-                aria-label={`上传${def.secret}`}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  if (!file) return;
-                  if (file.size > 65536) {
-                    setMessage("凭据文件不能超过 64 KB");
-                    return;
-                  }
-                  try {
-                    setSecret(await file.text());
-                    setDirty(true);
-                    setMessage("文件已载入，点击保存后生效");
-                  } catch {
-                    setMessage("文件读取失败");
-                  }
-                }}
-              />
-              <textarea
-                value={secret}
-                rows={4}
-                spellCheck={false}
-                placeholder={
+              </Stack>
+            ) : (
+              <PasswordInput
+                label={def.secret}
+                description={
                   savedSecret
-                    ? "输入新凭据以替换，留空保留"
-                    : "上传文件或粘贴凭据内容"
+                    ? "已保存，留空保留原密钥"
+                    : "首次保存需填写 API Key"
                 }
+                autoComplete="new-password"
+                value={secret}
+                disabled={!ready || busy}
                 onChange={(e) => {
-                  setSecret(e.target.value);
+                  setSecret(e.currentTarget.value);
                   setDirty(true);
                 }}
               />
-            </>
-          ) : (
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={secret}
-              placeholder={savedSecret ? "已保存，留空保留" : "输入 API Key"}
-              onChange={(e) => {
-                setSecret(e.target.value);
-                setDirty(true);
-              }}
-            />
-          )}
-          <small>
-            密钥加密保存，不通过读取接口回显，也不会包含在草稿导出中。
-          </small>
-        </label>
-      </fieldset>
-      {verification && (
-        <div className="verification-result" role="status">
-          <b>{verification.message}</b>
-          {verification.checkedAt && (
-            <p>验证时间：{new Date(verification.checkedAt).toLocaleString()}</p>
-          )}
-          {verification.jobId && <p>任务：{verification.jobId}</p>}
-          {verification.steps?.map((item, i) => (
-            <p key={i}>
-              {item.step}：{item.message}
-            </p>
-          ))}
-          {verifying && (
-            <p>
-              每 2 秒刷新。关闭页面不影响任务；若长期排队，请检查 npm run worker
-              是否正在运行。
-            </p>
-          )}
-        </div>
-      )}
-      {message && (
-        <p role="status" className="config-message">
-          {message}
-        </p>
-      )}
-      <div className="config-actions">
-        <button
-          type="button"
-          className="secondary"
-          disabled={!savedSecret || !ready || busy || dirty || verifying}
-          onClick={() => void verify()}
-        >
-          {scope === "google" ? "验证鉴权" : "验证连接"}
-        </button>
-        {scope === "google" && (
-          <button
-            type="button"
-            className="secondary"
-            disabled={!savedSecret || !ready || busy || dirty || verifying}
-            onClick={() => void verify(true)}
-          >
-            验证应用权限
-          </button>
+            )}
+          </>
         )}
-
-        <button className="primary" disabled={!ready || busy || !encryption}>
-          {busy ? "处理中…" : "保存配置"}
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy}
-          onClick={() => {
-            if (!dirty || confirm("丢弃当前未保存内容并重新载入？"))
-              void load();
-          }}
-        >
-          重新载入
-        </button>
-        <button
-          type="button"
-          disabled={!savedSecret || busy || !ready}
-          onClick={() => void remove()}
-        >
-          清除配置
-        </button>
-        <span>
-          {dirty
-            ? "有未保存修改"
-            : updated
-              ? `保存于 ${new Date(updated).toLocaleString()}`
-              : ""}
-        </span>
-      </div>
+        {verification && (
+          <Alert
+            color={
+              verification.status === "passed"
+                ? "teal"
+                : verification.status === "failed" ||
+                    verification.status === "uncertain"
+                  ? "orange"
+                  : "blue"
+            }
+            title={verification.message}
+          >
+            {verification.checkedAt && (
+              <Text size="xs">
+                {new Date(verification.checkedAt).toLocaleString()}
+              </Text>
+            )}
+            {verifying && (
+              <Text size="xs">后台验证中，可以关闭弹窗后再查看。</Text>
+            )}
+            {!!verification.steps?.length && (
+              <Accordion variant="default">
+                <Accordion.Item value="details">
+                  <Accordion.Control>查看验证详情</Accordion.Control>
+                  <Accordion.Panel>
+                    <Stack gap="xs">
+                      {verification.steps.map((step, i) => (
+                        <Text size="xs" key={i}>
+                          {step.message}
+                        </Text>
+                      ))}
+                    </Stack>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              </Accordion>
+            )}
+          </Alert>
+        )}
+        {confirmGoogle && (
+          <Alert color="orange" title="确认 Google 应用权限验证">
+            <Text size="sm">
+              这会创建并删除临时 edit，可能使该账号已有的未提交 edit
+              失效。请确认没有其他 API 编辑任务。
+            </Text>
+            <Group mt="md">
+              <Button
+                size="xs"
+                color="orange"
+                onClick={() => void verify(true)}
+              >
+                确认验证
+              </Button>
+              <Button
+                size="xs"
+                variant="default"
+                onClick={() => setConfirmGoogle(false)}
+              >
+                取消
+              </Button>
+            </Group>
+          </Alert>
+        )}
+        {confirmDelete && (
+          <Alert color="red" title="清除全部配置及密钥？">
+            <Text size="sm">清除后需要重新填写连接信息。</Text>
+            <Group mt="md">
+              <Button size="xs" color="red" onClick={() => void remove()}>
+                确认清除
+              </Button>
+              <Button
+                size="xs"
+                variant="default"
+                onClick={() => setConfirmDelete(false)}
+              >
+                取消
+              </Button>
+            </Group>
+          </Alert>
+        )}
+        <Group justify="space-between" className="modal-footer">
+          <Button
+            variant="subtle"
+            color="gray"
+            size="xs"
+            disabled={!savedSecret || !ready || busy}
+            onClick={() => setConfirmDelete(true)}
+          >
+            清除配置
+          </Button>
+          <Group gap="xs">
+            <Button
+              variant="default"
+              loading={verifying}
+              disabled={!savedSecret || !ready || busy || dirty || verifying}
+              onClick={() => void verify()}
+            >
+              {scope === "google" ? "验证鉴权" : "验证连接"}
+            </Button>
+            <Button
+              type="submit"
+              loading={busy}
+              disabled={!ready || !encryption}
+            >
+              保存配置
+            </Button>
+          </Group>
+        </Group>
+        {scope === "google" && (
+          <Button
+            variant="subtle"
+            size="xs"
+            disabled={!savedSecret || !ready || busy || dirty || verifying}
+            onClick={() => setConfirmGoogle(true)}
+          >
+            验证 Google 应用权限
+          </Button>
+        )}
+        <Text size="xs" c="dimmed">
+          {scope === "text" || scope === "image"
+            ? "连接验证只检查鉴权与模型目录，不调用生成接口。"
+            : "验证不上传资料，也不提交审核或发布版本。"}
+        </Text>
+      </Stack>
     </form>
+  );
+}
+type Summary = {
+  configured: boolean;
+  fields: Record<string, unknown>;
+  verification: Verification | null;
+};
+function ConnectionCard({ scope, app }: { scope: ConfigScope; app?: App }) {
+  const [state, setState] = useState<Summary | null>(null);
+  const [error, setError] = useState("");
+  const [opened, setOpened] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [discard, setDiscard] = useState(false);
+  const [version, setVersion] = useState(0);
+  const endpoint = `/api/settings/${scope}${app ? `?appId=${encodeURIComponent(app.id)}` : ""}`;
+  const refreshing = ["queued", "running"].includes(
+    state?.verification?.status ?? "",
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const r = await fetch(endpoint, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error);
+        if (!controller.signal.aborted) {
+          setState(data);
+          setError("");
+        }
+      } catch (e) {
+        if (!controller.signal.aborted)
+          setError(e instanceof Error ? e.message : "读取失败");
+      }
+    };
+    void load();
+    const timer = refreshing ? setInterval(() => void load(), 2000) : undefined;
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [endpoint, version, refreshing]);
+  const reload = useCallback(() => setVersion((current) => current + 1), []);
+  const def = definitions[scope];
+  const isModel = scope === "text" || scope === "image";
+  const status = state?.verification?.status;
+  return (
+    <>
+      <Paper p="xl">
+        <Stack gap="lg">
+          <Group justify="space-between">
+            <ThemeIcon
+              variant="light"
+              color={isModel ? "teal" : "gray"}
+              size={42}
+              radius="md"
+            >
+              {isModel ? <Sparkles size={21} /> : <KeyRound size={21} />}
+            </ThemeIcon>
+            <Badge
+              color={
+                !state?.configured
+                  ? "gray"
+                  : status === "passed"
+                    ? "teal"
+                    : status === "failed" || status === "uncertain"
+                      ? "orange"
+                      : "blue"
+              }
+              variant="light"
+            >
+              {!state
+                ? error
+                  ? "读取失败"
+                  : "读取中"
+                : !state.configured
+                  ? "未配置"
+                  : status === "passed"
+                    ? "连接正常"
+                    : status === "partial"
+                      ? "部分验证通过"
+                      : status === "failed"
+                        ? "验证失败"
+                        : status === "uncertain"
+                          ? "结果未知"
+                          : status === "queued" || status === "running"
+                            ? "验证中"
+                            : "已配置"}
+            </Badge>
+          </Group>
+          <div>
+            <Title order={3} size="h4">
+              {def.title}
+            </Title>
+            <Text size="sm" c="dimmed" mt={7} lineClamp={1}>
+              {error ||
+                String(
+                  isModel
+                    ? state?.fields.model || "连接你的模型服务"
+                    : scope === "apple"
+                      ? state?.fields.bundleId ||
+                        app?.apple ||
+                        "填写 App Store Connect 凭据"
+                      : state?.fields.packageName ||
+                        app?.google ||
+                        "填写 Google Play 服务账号",
+                )}
+            </Text>
+          </div>
+          <Button
+            variant="default"
+            rightSection={<ChevronRight size={15} />}
+            justify="space-between"
+            onClick={() => {
+              setDiscard(false);
+              setOpened(true);
+            }}
+          >
+            管理配置
+          </Button>
+        </Stack>
+      </Paper>
+      <Modal
+        opened={opened}
+        onClose={() => {
+          if (dirty) setDiscard(true);
+          else setOpened(false);
+        }}
+        closeOnClickOutside={false}
+        title={def.title}
+        size="700px"
+      >
+        {discard && (
+          <Alert color="orange" title="有未保存的修改" mb="lg">
+            <Text size="sm">继续编辑，或丢弃修改后关闭。</Text>
+            <Group mt="sm">
+              <Button
+                size="xs"
+                variant="default"
+                onClick={() => setDiscard(false)}
+              >
+                继续编辑
+              </Button>
+              <Button
+                size="xs"
+                color="orange"
+                onClick={() => {
+                  setOpened(false);
+                  setDirty(false);
+                  setDiscard(false);
+                }}
+              >
+                丢弃并关闭
+              </Button>
+            </Group>
+          </Alert>
+        )}
+        {opened && (
+          <ConfigForm
+            key={`${scope}:${app?.id ?? "global"}`}
+            scope={scope}
+            app={app}
+            onDirty={setDirty}
+            onSaved={reload}
+          />
+        )}
+      </Modal>
+    </>
   );
 }
 export default function Settings() {
@@ -528,58 +752,65 @@ export default function Settings() {
   }, []);
   const app = apps.find((a) => a.id === selected);
   return (
-    <div className="settings-shell">
-      <a className="back" href="/">
-        ← 返回应用工作台
-      </a>
-      <div className="heading">
-        <div>
-          <h1>连接与模型配置</h1>
-          <p>
-            商店配置按应用、平台独立保存；文本与图像模型为工作空间共享配置。
-          </p>
+    <WorkspaceShell active="settings" title="连接与模型">
+      <Stack gap="xl">
+        <div className="page-heading">
+          <Text className="eyebrow" mb={10}>
+            CONNECTIONS & MODELS
+          </Text>
+          <Title order={1} size={30}>
+            连接与模型
+          </Title>
+          <Text size="sm" c="dimmed" mt="xs">
+            一次配置，连接商店与 AI。凭据加密保存在本机。
+          </Text>
         </div>
-      </div>
-      {error && <p role="alert">{error}</p>}
-      <div className="warning">
-        先保存配置，再点击卡片上的验证按钮。结果只覆盖所列检查项；图像生成已在应用详情的
-        AI 截图工作室接通；商店同步与推送尚未接通。
-      </div>
-      <h2>商店连接</h2>
-      {!ready ? (
-        <p>正在载入…</p>
-      ) : (
-        <>
-          <label className="app-selector">
-            选择应用
-            <select
+        {error && <Alert color="red">{error}</Alert>}
+        <Group justify="space-between">
+          <Title order={2} size="h4">
+            商店连接
+          </Title>
+          {!!apps.length && (
+            <Select
+              size="sm"
+              aria-label="选择应用"
               value={selected}
-              onChange={(e) => {
-                location.href = `/settings?appId=${encodeURIComponent(e.target.value)}`;
-              }}
-            >
-              {apps.map((a) => (
-                <option value={a.id} key={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {app ? (
-            <div className="config-grid">
-              <ConfigForm key={`apple:${app.id}`} scope="apple" app={app} />
-              <ConfigForm key={`google:${app.id}`} scope="google" app={app} />
-            </div>
-          ) : (
-            <p>请先在工作台添加应用，再填写商店配置。</p>
+              onChange={(value) => value && setSelected(value)}
+              data={apps.map((a) => ({ value: a.id, label: a.name }))}
+              w={220}
+            />
           )}
-          <h2>AI 模型</h2>
-          <div className="config-grid">
-            <ConfigForm scope="text" />
-            <ConfigForm scope="image" />
-          </div>
-        </>
-      )}
-    </div>
+        </Group>
+        {!ready && !error ? (
+          <Loader size="sm" />
+        ) : app ? (
+          <SimpleGrid cols={{ base: 1, md: 2 }}>
+            <ConnectionCard key={`apple:${app.id}`} scope="apple" app={app} />
+            <ConnectionCard key={`google:${app.id}`} scope="google" app={app} />
+          </SimpleGrid>
+        ) : (
+          <Paper p="xl">
+            <Text size="sm" c="dimmed">
+              先在工作台添加应用，再配置商店连接。
+            </Text>
+            <Button component="a" href="/" variant="light" mt="md">
+              返回应用管理
+            </Button>
+          </Paper>
+        )}
+        <div>
+          <Title order={2} size="h4">
+            AI 模型
+          </Title>
+          <Text size="xs" c="dimmed" mt={6}>
+            工作空间共享，文本与图像服务可独立选择。
+          </Text>
+        </div>
+        <SimpleGrid cols={{ base: 1, md: 2 }}>
+          <ConnectionCard scope="text" />
+          <ConnectionCard scope="image" />
+        </SimpleGrid>
+      </Stack>
+    </WorkspaceShell>
   );
 }

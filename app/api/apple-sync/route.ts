@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { pool } from "../../../lib/db";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { db } from "../../../lib/db";
+import {
+  jobs,
+  workspaces,
+  connectionConfigs,
+  storeSnapshots,
+} from "../../../lib/schema";
+import { enqueue } from "../../../lib/job-store";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 import { configFields } from "../../../lib/config-model";
 export async function GET(request: Request) {
@@ -8,22 +16,26 @@ export async function GET(request: Request) {
     const appId = z
       .uuid()
       .parse(new URL(request.url).searchParams.get("appId"));
-    const {
-      rows: [snapshot],
-    } = await pool().query(
-      "select s.*,c.revision as live_revision from store_snapshots s left join connection_configs c on c.id=$2 where s.app_id=$1",
-      [appId, `apple:${appId}`],
-    );
-    const {
-      rows: [job],
-    } = await pool().query(
-      "select id,status,result from jobs where app_id=$1 and kind='pull_apple' order by created_at desc limit 1",
-      [appId],
-    );
+    const snapshot = db()
+      .select()
+      .from(storeSnapshots)
+      .where(eq(storeSnapshots.app_id, appId))
+      .get();
+    const config = db()
+      .select()
+      .from(connectionConfigs)
+      .where(eq(connectionConfigs.id, `apple:${appId}`))
+      .get();
+    const job = db()
+      .select({ id: jobs.id, status: jobs.status, result: jobs.result })
+      .from(jobs)
+      .where(and(eq(jobs.app_id, appId), eq(jobs.kind, "pull_apple")))
+      .orderBy(desc(jobs.created_at))
+      .get();
     return json({
       snapshot: snapshot?.current_snapshot ?? null,
       previous: snapshot?.previous_snapshot ?? null,
-      stale: !!snapshot && snapshot.config_revision !== snapshot.live_revision,
+      stale: !!snapshot && snapshot.config_revision !== config?.revision,
       job: job ?? null,
     });
   } catch (e) {
@@ -31,7 +43,6 @@ export async function GET(request: Request) {
   }
 }
 export async function POST(request: Request) {
-  let client;
   try {
     await authorize(request);
     const input = z
@@ -41,54 +52,67 @@ export async function POST(request: Request) {
       })
       .strict()
       .parse(await request.json());
-    client = await pool().connect();
-    await client.query("begin");
-    await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [
-      `pull:${input.appId}`,
-    ]);
-    const {
-      rows: [workspace],
-    } = await client.query(
-      "select apps from workspaces where id='default' for share",
+    const id = db().transaction(
+      (tx) => {
+        const app = tx
+          .select()
+          .from(workspaces)
+          .where(eq(workspaces.id, "default"))
+          .get()
+          ?.apps.find((a) => a.id === input.appId);
+        if (!app?.apple) throw new HttpError(404, "Apple 应用不存在");
+        const config = tx
+          .select()
+          .from(connectionConfigs)
+          .where(eq(connectionConfigs.id, `apple:${input.appId}`))
+          .get();
+        if (!config?.secret)
+          throw new HttpError(
+            400,
+            "尚未保存 Apple 连接凭据，请先在连接与模型中保存配置",
+          );
+        const parsed = configFields.apple.safeParse(config.fields);
+        if (!parsed.success)
+          throw new HttpError(
+            400,
+            "Apple 连接配置不完整，请检查应用 ID、Bundle ID 和平台",
+          );
+        if (parsed.data.bundleId !== app.apple)
+          throw new HttpError(
+            409,
+            "Apple 连接的 Bundle ID 与当前应用不一致，请检查连接配置",
+          );
+        if (
+          tx
+            .select()
+            .from(jobs)
+            .where(
+              and(
+                eq(jobs.app_id, input.appId),
+                eq(jobs.kind, "pull_apple"),
+                inArray(jobs.status, ["queued", "running"]),
+              ),
+            )
+            .get()
+        )
+          throw new HttpError(409, "已有商店资料同步任务，请等待完成");
+        return enqueue(
+          {
+            app_id: input.appId,
+            platform: "apple",
+            kind: "pull_apple",
+            input: {
+              configRevision: config.revision,
+              appInfoId: input.appInfoId,
+            },
+          },
+          tx,
+        );
+      },
+      { behavior: "immediate" },
     );
-    if (
-      !workspace?.apps.some(
-        (a: { id: string; apple: string }) => a.id === input.appId && a.apple,
-      )
-    )
-      throw new HttpError(404, "Apple 应用不存在");
-    const {
-      rows: [config],
-    } = await client.query(
-      "select fields,revision from connection_configs where id=$1",
-      [`apple:${input.appId}`],
-    );
-    if (!config || !configFields.apple.parse(config.fields).version)
-      throw new HttpError(400, "请先配置 Apple 凭据、平台及明确的目标版本号");
-    const pending = await client.query(
-      "select id from jobs where app_id=$1 and kind='pull_apple' and status in ('queued','running')",
-      [input.appId],
-    );
-    if (pending.rowCount) throw new HttpError(409, "已有拉取任务，请等待完成");
-    const id = crypto.randomUUID();
-    await client.query(
-      "insert into jobs(id,app_id,platform,kind,input) values($1,$2,'apple','pull_apple',$3)",
-      [
-        id,
-        input.appId,
-        { configRevision: config.revision, appInfoId: input.appInfoId },
-      ],
-    );
-    await client.query(
-      "select graphile_worker.add_job('pull_apple',$1::json,queue_name := $2,max_attempts := 1)",
-      [JSON.stringify({ id }), `${input.appId}:apple`],
-    );
-    await client.query("commit");
     return json({ id }, 202);
   } catch (e) {
-    if (client) await client.query("rollback");
     return failure(e);
-  } finally {
-    client?.release();
   }
 }

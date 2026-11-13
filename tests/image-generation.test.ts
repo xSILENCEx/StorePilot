@@ -6,31 +6,21 @@ import {
   isPublicIPv4,
   ImageGenerationError,
 } from "../lib/image-provider";
-import {
-  screenshotSettings,
-  generationPrompt,
-  validateGeneration,
-  deviceFor,
-} from "../lib/screenshot-model";
+import { imageSettings } from "../lib/image-model";
 const config = {
   baseUrl: "https://images.example/v1",
   model: "configured-image-model",
   timeoutSeconds: 120,
-  concurrency: 2,
 };
-test("原始 App 截图模板要求截图；整图可无素材；平台设备不可串用", () => {
-  assert.ok(validateGeneration(screenshotSettings.parse({ mode: "template" })));
+test("提示词必填，不接受已删除的模板设置", () => {
+  assert.equal(imageSettings.safeParse({ prompt: " " }).success, false);
   assert.equal(
-    validateGeneration(
-      screenshotSettings.parse({ mode: "image-ai", prompt: "test" }),
-    ),
-    null,
+    imageSettings.safeParse({ prompt: "test", template: "hero" }).success,
+    false,
   );
-  assert.throws(() => deviceFor("google-phone", "apple"));
 });
 test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不支持的 response_format", async () => {
-  const settings = screenshotSettings.parse({
-    mode: "image-ai",
+  const settings = imageSettings.parse({
     prompt: "test",
     quality: "high",
   });
@@ -42,6 +32,7 @@ test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不�
     const body = JSON.parse(init?.body as string);
     assert.equal(body.model, config.model);
     assert.equal(body.n, 1);
+    assert.equal(body.prompt, settings.prompt);
     assert.equal(body.quality, "high");
     assert.equal(body.response_format, undefined);
     assert.equal(
@@ -54,7 +45,7 @@ test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不�
     config,
     "fixture-key",
     settings,
-    "zh-Hans",
+
     "candidate-test",
     [],
     fetcher,
@@ -63,8 +54,7 @@ test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不�
   assert.equal(calls, 1);
 });
 test("参考图按 multipart 发给 edits；自动质量省略而非强塞参数", async () => {
-  const settings = screenshotSettings.parse({
-    mode: "image-ai",
+  const settings = imageSettings.parse({
     prompt: "test",
   });
   const fetcher: typeof fetch = async (input, init) => {
@@ -84,26 +74,13 @@ test("参考图按 multipart 发给 edits；自动质量省略而非强塞参数
         config,
         "fixture-key",
         settings,
-        "en-US",
+
         "candidate-test",
         [{ buffer: Buffer.from("image"), mime: "image/png" }],
         fetcher,
       )
     ).url,
   );
-});
-test("背景提示词不包含模板文案，模型不负责绘制真实 UI", () => {
-  const prompt = generationPrompt(
-    screenshotSettings.parse({
-      mode: "template-ai",
-      headline: "Private app headline",
-      prompt: "soft green",
-    }),
-    "en-US",
-  );
-  assert.ok(!prompt.includes("Private app headline"));
-  assert.match(prompt, /No text/);
-  assert.match(prompt, /no UI/);
 });
 test("请求超时/网络结果未知不自动重试；错误不输出远端正文或密钥", async () => {
   let calls = 0;
@@ -116,8 +93,8 @@ test("请求超时/网络结果未知不自动重试；错误不输出远端正�
       callImageModel(
         config,
         "fixture-key",
-        screenshotSettings.parse({}),
-        "en-US",
+        imageSettings.parse({ prompt: "test" }),
+
         "id",
         [],
         timeout,
@@ -135,8 +112,8 @@ test("请求超时/网络结果未知不自动重试；错误不输出远端正�
       callImageModel(
         config,
         "fixture-key",
-        screenshotSettings.parse({}),
-        "en-US",
+        imageSettings.parse({ prompt: "test" }),
+
         "id",
         [],
         rejected,

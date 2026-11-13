@@ -1,119 +1,98 @@
-import {
-  pgTable,
-  text,
-  integer,
-  jsonb,
-  timestamp,
-  uuid,
-  boolean,
-} from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import type { StoreApp } from "./model";
-export const workspaces = pgTable("workspaces", {
+import type { AppleSnapshot } from "./apple-sync-model";
+const timestamp = (name: string) =>
+  text(name)
+    .notNull()
+    .$defaultFn(() => new Date().toISOString());
+export const workspaces = sqliteTable("workspaces", {
   id: text("id").primaryKey(),
   revision: integer("revision").notNull().default(0),
-  apps: jsonb("apps").$type<StoreApp[]>().notNull().default([]),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
+  apps: text("apps", { mode: "json" })
+    .$type<StoreApp[]>()
     .notNull()
-    .defaultNow(),
+    .default([]),
+  updatedAt: timestamp("updated_at"),
 });
-export const assets = pgTable("assets", {
+export const assets = sqliteTable("assets", {
   id: text("id").primaryKey(),
   mime: text("mime").notNull(),
   width: integer("width").notNull(),
   height: integer("height").notNull(),
   bytes: integer("bytes").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at"),
 });
-export const jobs = pgTable("jobs", {
+export type Verification = {
+  status: string;
+  revision: number;
+  jobId: string;
+  message: string;
+  [key: string]: unknown;
+};
+export const connectionConfigs = sqliteTable("connection_configs", {
   id: text("id").primaryKey(),
-  appId: text("app_id").notNull(),
-  platform: text("platform").notNull(),
-  kind: text("kind").notNull(),
-  status: text("status").notNull().default("queued"),
-  input: jsonb("input").notNull(),
-  result: jsonb("result"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-export const connectionConfigs = pgTable("connection_configs", {
-  id: text("id").primaryKey(),
-  verification: jsonb("verification"),
   scope: text("scope").notNull(),
-  appId: text("app_id"),
-  fields: jsonb("fields").notNull(),
+  app_id: text("app_id"),
+  fields: text("fields", { mode: "json" })
+    .$type<Record<string, unknown>>()
+    .notNull(),
   secret: text("secret").notNull(),
   revision: integer("revision").notNull().default(1),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  verification: text("verification", { mode: "json" }).$type<Verification>(),
+  updated_at: timestamp("updated_at"),
 });
-
-export const screenshotGroups = pgTable("screenshot_groups", {
-  id: uuid("id").primaryKey(),
-  appId: text("app_id").notNull(),
-  platform: text("platform").notNull(),
-  locale: text("locale").notNull(),
-  device: text("device").notNull(),
-  settings: jsonb("settings").notNull(),
-  adopted: jsonb("adopted").notNull().default([]),
-  previous: jsonb("previous").notNull().default([]),
-  hasPrevious: boolean("has_previous").notNull().default(false),
-  revision: integer("revision").notNull().default(1),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
+export type ImageResult = {
+  url: string;
+  width: number;
+  height: number;
+  bytes: number;
+};
+export const jobs = sqliteTable(
+  "jobs",
+  {
+    id: text("id").primaryKey(),
+    app_id: text("app_id").notNull(),
+    platform: text("platform").notNull(),
+    kind: text("kind", {
+      enum: [
+        "generate_image",
+        "verify_connection",
+        "pull_apple",
+        "validate_draft",
+      ],
+    }).notNull(),
+    status: text("status", {
+      enum: ["queued", "running", "succeeded", "failed", "uncertain"],
+    })
+      .notNull()
+      .default("queued"),
+    input: text("input", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    result: text("result", { mode: "json" }).$type<Record<string, unknown>>(),
+    created_at: timestamp("created_at"),
+    updated_at: timestamp("updated_at"),
+  },
+  (table) => [index("jobs_status_created").on(table.status, table.created_at)],
+);
+export type Job = typeof jobs.$inferSelect;
+export const jobLogs = sqliteTable("job_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  job_id: text("job_id")
     .notNull()
-    .defaultNow(),
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  step: text("step").notNull(),
+  message: text("message").notNull(),
+  created_at: timestamp("created_at"),
 });
-export const imageCandidates = pgTable("image_candidates", {
-  id: uuid("id").primaryKey(),
-  groupId: uuid("group_id")
-    .notNull()
-    .references(() => screenshotGroups.id),
-  jobId: text("job_id").references(() => jobs.id),
-  requestId: uuid("request_id"),
-  status: text("status").notNull().default("queued"),
-  settings: jsonb("settings").notNull(),
-  origin: text("origin").notNull(),
-  url: text("url"),
-  thumbnail: text("thumbnail"),
-  rawUrl: text("raw_url"),
-  error: text("error"),
-  discarded: boolean("discarded").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-export const imageCalls = pgTable("image_calls", {
-  candidateId: uuid("candidate_id")
-    .primaryKey()
-    .references(() => imageCandidates.id),
-  status: text("status").notNull(),
-  configRevision: integer("config_revision").notNull(),
-  startedAt: timestamp("started_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-});
-
-export const storeSnapshots = pgTable("store_snapshots", {
-  appId: text("app_id").primaryKey(),
-  configRevision: integer("config_revision").notNull(),
-  currentSnapshot: jsonb("current_snapshot")
-    .$type<import("./apple-sync-model").AppleSnapshot>()
+export const storeSnapshots = sqliteTable("store_snapshots", {
+  app_id: text("app_id").primaryKey(),
+  config_revision: integer("config_revision").notNull(),
+  current_snapshot: text("current_snapshot", { mode: "json" })
+    .$type<AppleSnapshot>()
     .notNull(),
-  previousSnapshot:
-    jsonb("previous_snapshot").$type<
-      import("./apple-sync-model").AppleSnapshot
-    >(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  previous_snapshot: text("previous_snapshot", {
+    mode: "json",
+  }).$type<AppleSnapshot | null>(),
+  updated_at: timestamp("updated_at"),
 });

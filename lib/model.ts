@@ -6,6 +6,12 @@ export const draftSchema = z.object({
   subtitle: z.string().max(1000),
   description: z.string().max(20000),
   keywords: z.string().max(2000),
+  promotionalText: z.string().max(10000).optional(),
+  whatsNew: z.string().max(20000).optional(),
+  supportUrl: z.string().max(2000).optional(),
+  marketingUrl: z.string().max(2000).optional(),
+  privacyPolicyUrl: z.string().max(2000).optional(),
+  privacyChoicesUrl: z.string().max(2000).optional(),
   images: z.array(z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/)).max(50),
 });
 export type Draft = z.infer<typeof draftSchema>;
@@ -37,7 +43,7 @@ export function validateDraft(platform: Platform, draft: Draft) {
       ? { title: 30, subtitle: 30, description: 4000, keywords: 100 }
       : { title: 30, subtitle: 80, description: 4000 };
   return Object.entries(limits).flatMap(([field, limit]) => {
-    const text = draft[field as keyof Omit<Draft, "images">];
+    const text = draft[field as keyof Omit<Draft, "images">] ?? "";
     const length =
       platform === "apple" && field === "keywords"
         ? new TextEncoder().encode(text).length
