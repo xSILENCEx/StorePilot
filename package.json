@@ -1,0 +1,58 @@
+{
+  "name": "storepilot",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "admin:create": "tsx scripts/admin.ts",
+    "worker": "tsx scripts/worker.ts",
+    "db:local": "tsx scripts/local-db.ts",
+    "setup:local": "tsx scripts/setup-local.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "admin:bootstrap": "tsx scripts/bootstrap-admin.ts",
+    "config:key": "tsx scripts/config-key.ts",
+    "verify:images": "tsx scripts/verify-image-flow.ts",
+    "services:start": "node scripts/services.mjs start",
+    "services:stop": "node scripts/services.mjs stop",
+    "services:status": "node scripts/services.mjs status"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xSILENCEx/StorePilot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/xSILENCEx/StorePilot/issues"
+  },
+  "homepage": "https://github.com/xSILENCEx/StorePilot#readme",
+  "private": true,
+  "dependencies": {
+    "@next/env": "^16.4.6",
+    "better-auth": "^1.7.22",
+    "drizzle-orm": "^0.45.4",
+    "graphile-worker": "^0.18.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.0.0",
+    "pg": "^8.23.1",
+    "playwright": "^1.65.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "embedded-postgres": "^18.6.0-beta.19",
+    "prettier": "^3.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0"
+  }
+}
