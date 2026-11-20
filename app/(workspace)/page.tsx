@@ -509,7 +509,7 @@ export default function Home() {
                     disabled={!editable || !saved || locales.length < 2}
                     onClick={() => setLanguageModal("update")}
                   >
-                    翻译
+                    翻译到其他语言
                   </Button>
                   <StoreSyncPanel
                     key={app.id + platform}
