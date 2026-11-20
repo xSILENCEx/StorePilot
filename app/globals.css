@@ -48,6 +48,29 @@ a {
   border-color: var(--mantine-color-blue-3);
   transform: translateY(-2px);
 }
+.app-card-icons {
+  display: grid;
+  grid-template-columns: 52px;
+  isolation: isolate;
+}
+.app-card-icon {
+  grid-area: 1 / 1;
+}
+.app-card-icon:first-child {
+  z-index: 1;
+}
+.app-card-icon + .app-card-icon {
+  transform: translate(12px, 8px);
+  transition: transform 220ms ease-in-out;
+}
+.app-card:is(:hover, :has(:focus-visible)) .app-card-icon + .app-card-icon {
+  transform: translate(60px, 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-card-icon + .app-card-icon {
+    transition: none;
+  }
+}
 .screenshot-strip {
   --screenshot-gap: 16px;
   display: flex;

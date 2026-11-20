@@ -346,9 +346,34 @@ export default function Home() {
                     <UnstyledButton onClick={() => openApp(a)} w="100%">
                       <Stack gap="lg">
                         <Group justify="space-between">
-                          <Avatar size={52} radius="lg" color="blue">
-                            {a.name.slice(0, 1).toUpperCase()}
-                          </Avatar>
+                          <div className="app-card-icons">
+                            {a.platformIcons?.apple ||
+                            a.platformIcons?.google ? (
+                              (["apple", "google"] as const).map((store) =>
+                                a.platformIcons?.[store] ? (
+                                  <Avatar
+                                    key={store}
+                                    size={52}
+                                    radius="lg"
+                                    color="blue"
+                                    className="app-card-icon"
+                                    src={a.platformIcons[store]}
+                                    alt={
+                                      store === "apple"
+                                        ? "App Store 图标"
+                                        : "Google Play 图标"
+                                    }
+                                  >
+                                    {a.name.slice(0, 1).toUpperCase()}
+                                  </Avatar>
+                                ) : null,
+                              )
+                            ) : (
+                              <Avatar size={52} radius="lg" color="blue">
+                                {a.name.slice(0, 1).toUpperCase()}
+                              </Avatar>
+                            )}
+                          </div>
                           <ArrowRight
                             size={18}
                             color="var(--mantine-color-dimmed)"
