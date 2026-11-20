@@ -199,10 +199,10 @@ export function ScreenshotList(props: EditorProps) {
   const [selected, setSelected] = useState<string>();
   const group =
     groups.find((g) => g.value === selected) ??
+    groups.find((g) => groupImages(draft, g.value).length) ??
     (platform === "apple"
       ? groups.find((g) => g.label === "iPhone · 灵动岛中屏")
       : undefined) ??
-    groups.find((g) => groupImages(draft, g.value).length) ??
     groups[0];
   const families = Object.groupBy(groups, category);
   const family = category(group);
