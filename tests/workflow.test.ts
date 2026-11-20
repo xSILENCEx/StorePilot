@@ -662,6 +662,12 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
             deleted++;
             return new Response(null, { status: 204 });
           }
+          if (url.endsWith("/edits/abc/details"))
+            return Response.json({
+              defaultLanguage: "en-US",
+              contactEmail: "support@example.com",
+              contactWebsite: "https://example.com",
+            });
           if (url.endsWith("/listings"))
             return Response.json({
               listings: [
@@ -704,6 +710,11 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
           ).json();
           assert.equal(state.job.status, fail ? "failed" : "succeeded");
           const entry = state.snapshot.locales["en-US"];
+          assert.deepEqual(state.snapshot.details, {
+            defaultLanguage: "en-US",
+            contactEmail: "support@example.com",
+            contactWebsite: "https://example.com",
+          });
           assert.equal(entry.draft.subtitle, "Short");
           assert.equal(entry.draft.video, "https://youtu.be/example");
           assert.equal(entry.screenshots[0].deviceType, "phoneScreenshots");

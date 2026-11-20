@@ -64,6 +64,12 @@ export type StoreLocales = Record<
 >;
 export type GoogleSnapshot = {
   packageName: string;
+  details?: {
+    defaultLanguage?: string;
+    contactWebsite?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+  };
   fetchedAt: string;
   warnings: string[];
   locales: StoreLocales;

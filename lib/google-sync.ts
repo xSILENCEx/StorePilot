@@ -9,6 +9,12 @@ import type { GoogleSnapshot } from "./apple-sync-model";
 
 import { googleScreenshotDevices } from "./screenshot-groups";
 
+const appDetails = z.object({
+  defaultLanguage: z.string().optional(),
+  contactWebsite: z.string().optional(),
+  contactEmail: z.string().optional(),
+  contactPhone: z.string().optional(),
+});
 const listing = z.object({
   language: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
   title: z.string().default(""),
@@ -65,7 +71,11 @@ export async function readGoogleSnapshot(
     .parse(edit.id);
   const url = base + "/" + id;
   try {
-    report("google_listings", "临时 edit 已创建，读取本地化详情");
+    report("google_details", "读取应用默认语言和公开联系方式");
+    const details = appDetails.parse(
+      await read(url + "/details", "google_details", "读取应用信息"),
+    );
+    report("google_listings", "读取本地化详情");
     const { listings } = z
       .object({ listings: z.array(listing).default([]) })
       .parse(
@@ -110,6 +120,7 @@ export async function readGoogleSnapshot(
     }
     return {
       packageName,
+      details,
       locales,
       fetchedAt: new Date().toISOString(),
       warnings: [],

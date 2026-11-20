@@ -521,9 +521,26 @@ export function StoreSyncPanel({
                 </Tabs.Panel>
                 <Tabs.Panel value="app" pt="lg">
                   <Stack>
+                    {"packageName" in snapshot && !snapshot.details && (
+                      <Text size="sm" c="dimmed">
+                        重新同步商店资料后可查看默认语言和公开联系方式。
+                      </Text>
+                    )}
                     {Object.entries(
                       "packageName" in snapshot
-                        ? { 包名: snapshot.packageName }
+                        ? {
+                            包名: snapshot.packageName,
+                            ...(snapshot.details && {
+                              应用名称:
+                                snapshot.locales[
+                                  snapshot.details.defaultLanguage ?? ""
+                                ]?.draft.title,
+                              默认语言: snapshot.details.defaultLanguage,
+                              联系网站: snapshot.details.contactWebsite,
+                              支持邮箱: snapshot.details.contactEmail,
+                              支持电话: snapshot.details.contactPhone,
+                            }),
+                          }
                         : {
                             应用名称: snapshot.metadata?.name,
                             主要语言: snapshot.metadata?.primaryLocale,
