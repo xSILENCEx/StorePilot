@@ -266,7 +266,6 @@ export function ScreenshotList(props: EditorProps) {
         <Tabs.List aria-label="设备类别" className="screenshot-device-tabs">
           {Object.keys(families).map((name) => {
             const Icon = icons[name] ?? Smartphone;
-            const device = name === family ? group : preferred(name);
             return (
               <Tabs.Tab
                 key={name}
@@ -274,11 +273,6 @@ export function ScreenshotList(props: EditorProps) {
                 leftSection={<Icon size={24} strokeWidth={1.4} />}
               >
                 {name}
-                {families[name]!.length > 1 && (
-                  <Text component="span" display="block" size="xs" c="dimmed">
-                    {device.label.replace(name + " · ", "")}
-                  </Text>
-                )}
               </Tabs.Tab>
             );
           })}
