@@ -10,7 +10,6 @@ import {
   ThemeIcon,
   NavLink,
   Stack,
-  Badge,
   Button,
   Container,
   Box,
@@ -80,14 +79,6 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
               工作空间 / {title}
             </Text>
           </Group>
-          <Badge
-            color="gray"
-            variant="light"
-            size="lg"
-            leftSection={<span className="status-dot" />}
-          >
-            本机工作空间
-          </Badge>
         </Group>
       </AppShell.Header>
       <AppShell.Navbar
@@ -125,15 +116,6 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             }}
           />
           <Box style={{ flex: 1 }} />
-          <Text
-            className="workspace-nav-caption"
-            size="xs"
-            c="dimmed"
-            px="sm"
-            mb="xs"
-          >
-            资料与素材保存在本机
-          </Text>
           <Button
             variant="subtle"
             color="gray"

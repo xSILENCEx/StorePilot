@@ -308,7 +308,7 @@ function ConfigForm({
       <Stack gap="lg">
         <Text size="sm" c="dimmed">
           {scope === "text" || scope === "image"
-            ? "工作空间共享。使用 OpenAI 兼容 API，密钥加密保存在本机。"
+            ? "工作空间共享。使用 OpenAI 兼容 API，密钥加密保存。"
             : "当前应用独立配置。密钥加密保存，不通过读取接口回显。"}
         </Text>
         {message && <Alert color="orange">{message}</Alert>}
@@ -761,7 +761,7 @@ export default function Settings() {
             连接与模型
           </Title>
           <Text size="sm" c="dimmed" mt="xs">
-            一次配置，连接商店与 AI。凭据加密保存在本机。
+            一次配置，连接商店与 AI。
           </Text>
         </div>
         {error && <Alert color="red">{error}</Alert>}

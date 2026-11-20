@@ -40,7 +40,7 @@ export async function savedReply(id: string): Promise<ImageReply | null> {
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw new ImageGenerationError(
-      "已保存的模型响应损坏，请检查本机素材备份；不会重新调用模型。",
+      "已保存的模型响应损坏，请检查素材备份；不会重新调用模型。",
     );
   }
 }
@@ -243,7 +243,7 @@ export async function downloadImage(raw: string, depth = 0): Promise<Buffer> {
       reject(new ImageGenerationError("生成图片下载超时，可重试处理"));
     });
     request.on("error", () =>
-      reject(new ImageGenerationError("生成图片下载连接失败，请检查本机网络")),
+      reject(new ImageGenerationError("生成图片下载连接失败，请检查服务端网络")),
     );
   });
 }

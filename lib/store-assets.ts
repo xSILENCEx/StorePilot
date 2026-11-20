@@ -54,7 +54,7 @@ export async function saveStoreImages(
       cached.set(image.sourceUrl, asset.url);
     } catch {
       throw new StoreSyncError(
-        "商店图片下载或保存失败，本次未替换上次资料快照。请检查网络、素材地址与本机存储后重试。",
+        "商店图片下载或保存失败，本次未替换上次资料快照。请检查网络、素材地址与存储空间后重试。",
       );
     }
   }

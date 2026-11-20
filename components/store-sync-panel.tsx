@@ -340,10 +340,10 @@ export function StoreSyncPanel({
                         </Group>
                         <Text size="xs" c="dimmed">
                           {!local
-                            ? "此语言尚无本地草稿。"
+                            ? "此语言尚无草稿。"
                             : differences.length
-                              ? `${differences.length} 个字段与本地不同。`
-                              : "与本地元数据一致。"}
+                              ? `${differences.length} 个字段与草稿不同。`
+                              : "与草稿一致。"}
                         </Text>
                         <Accordion variant="separated">
                           {Object.entries(
@@ -381,7 +381,7 @@ export function StoreSyncPanel({
                                   <SimpleGrid cols={{ base: 1, sm: 2 }}>
                                     <div>
                                       <Text size="xs" c="dimmed">
-                                        本地草稿
+                                        草稿
                                       </Text>
                                       <p className="diff-copy">
                                         {local?.[key] || "（空）"}
@@ -592,7 +592,7 @@ export function StoreSyncPanel({
         <Stack>
           <Text size="sm">
             {section === "screenshots"
-              ? "所选语言的全部本地截图将替换为商店截图，包括未分组截图。仅列出截图已全部下载的语言。"
+              ? "所选语言的全部草稿截图将替换为商店截图，包括未分组截图。仅列出截图已全部下载的语言。"
               : section === "graphics"
                 ? "所选语言的图片资源将替换为商店图片资源。"
                 : "将覆盖所选语言的商店文案字段，缺少的语言将创建草稿。"}

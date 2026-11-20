@@ -215,15 +215,15 @@ export async function storeRequest(
     throw new CheckError(
       stage,
       error.name === "TimeoutError" || error.name === "AbortError"
-        ? "连接超时，请检查本机网络和目标服务。"
-        : `无法连接目标服务${error.cause?.code && /^[A-Z_]+$/.test(error.cause.code) ? `（${error.cause.code}）` : ""}，请检查打包机网络、DNS、代理或 TLS。`,
+        ? "连接超时，请检查服务端网络和目标服务。"
+        : `无法连接目标服务${error.cause?.code && /^[A-Z_]+$/.test(error.cause.code) ? `（${error.cause.code}）` : ""}，请检查服务端网络、DNS、代理或 TLS。`,
     );
   }
   if (!response.ok) {
     await response.body?.cancel();
     const help: Record<number, string> = {
-      400: "请求被拒绝：请检查凭据、服务账号或应用配置；Google 服务账号还需检查本机时间。",
-      401: "鉴权失败：请检查密钥是否正确、过期或已撤销，以及本机时间。",
+      400: "请求被拒绝：请检查凭据、服务账号或应用配置；Google 服务账号还需检查服务器时间。",
+      401: "鉴权失败：请检查密钥是否正确、过期或已撤销，以及服务器时间。",
       403: "权限不足或 API 尚未启用，请检查对应服务的账号授权。",
       404: "应用、模型目录或 API 地址不存在，或当前账号不可见。",
       429: "触发限流或账户配额限制，请稍后重试。",

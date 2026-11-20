@@ -756,7 +756,7 @@ function ScreenshotGroup({
       )}
       <Group gap="xs" mt="md">
         <Text size="xs" c="dimmed">
-          PNG / JPEG · 本地每张最多 20 MB
+          PNG / JPEG · 每张最多 20 MB
         </Text>
         {sizeControl}
         {platform === "google" && (

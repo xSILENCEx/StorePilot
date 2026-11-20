@@ -266,7 +266,7 @@ export async function readAppleSnapshot(
     );
     if (rows.length) deviceGroups = parseAppleDeviceCatalog(rows[0].attributes);
   } catch {
-    warnings.push("设备目录读取失败，本地编辑器可继续使用公开规格分组。");
+    warnings.push("设备目录读取失败，编辑器可继续使用公开规格分组。");
   }
   let icon: AppleSnapshot["icon"];
   try {

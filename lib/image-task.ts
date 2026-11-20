@@ -92,10 +92,10 @@ export async function generateImageTask(job: Job) {
     const message = known
       ? error.message
       : received
-        ? "图片处理或保存失败，模型响应已保留，请检查本机存储。"
+        ? "图片处理或保存失败，模型响应已保留，请检查存储空间。"
         : sent
           ? "模型请求或图片保存失败，调用结果可能已计费，请检查后再决定是否重新生成。"
-          : "图片生成失败，请检查模型配置、参考图及本机存储。";
+          : "图片生成失败，请检查模型配置、参考图及存储空间。";
     finishJob(job.id, uncertain ? "uncertain" : "failed", { error: message });
     logJob(job.id, "failed", message);
   }

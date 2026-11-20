@@ -48,7 +48,7 @@ export async function executeJob(job: Job) {
     }
   } catch {
     finishJob(job.id, "failed", {
-      error: "任务失败，请检查配置和本机存储后重试。",
+      error: "任务失败，请检查配置和存储空间后重试。",
     });
     logJob(job.id, "failed", "任务执行失败");
   }

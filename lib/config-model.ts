@@ -15,7 +15,7 @@ const endpoint = z
         (u.protocol === "http:" &&
           ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)))
     );
-  }, "使用 HTTPS 地址；本机模型可使用 HTTP，不要在 URL 中包含密钥、查询参数或片段");
+  }, "使用 HTTPS 地址；回环地址可使用 HTTP，不要在 URL 中包含密钥、查询参数或片段");
 export const configFields = {
   apple: z
     .object({

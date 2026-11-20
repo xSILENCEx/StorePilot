@@ -733,7 +733,7 @@ export default function Home() {
                       }}
                     >
                       <Text size="xs" c="dimmed">
-                        更改自动保存为本地草稿
+                        更改自动保存为草稿
                       </Text>
                       <Group>
                         <Button
@@ -861,7 +861,7 @@ export default function Home() {
         size="sm"
       >
         <Text size="sm">
-          删除 {locale} 的本地草稿及截图引用？其他语言不受影响。
+          删除 {locale} 的草稿及截图引用？其他语言不受影响。
         </Text>
         <Group justify="end" mt="xl">
           <Button variant="default" onClick={() => setDeleteLanguage(false)}>

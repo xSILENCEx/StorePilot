@@ -18,14 +18,6 @@ a {
 .brand {
   text-decoration: none;
 }
-.status-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: var(--mantine-color-green-7);
-  border-radius: 50%;
-  margin-right: 4px;
-}
 .workspace-content {
   padding: 36px 40px 60px;
 }
@@ -234,7 +226,7 @@ a {
     width: 230px;
   }
   .workspace-nav:is([data-dismissed], :not(:hover):not(:has(:focus-visible)))
-    :is(.workspace-nav-caption, .mantine-NavLink-body, .mantine-Button-label) {
+    :is(.mantine-NavLink-body, .mantine-Button-label) {
     opacity: 0;
   }
   .workspace-nav .mantine-Button-inner {
