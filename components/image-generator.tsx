@@ -1,4 +1,5 @@
 "use client";
+import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -509,14 +510,25 @@ export function ImageGenerator({
                 <Text size="sm" c="dimmed">
                   生成结果仅在你选择后加入截图列表。
                 </Text>
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  leftSection={<Sparkles size={14} />}
-                  onClick={() => setTab("create")}
-                >
-                  再次生成
-                </Button>
+                <Group gap="xs">
+                  <BatchDownload
+                    appId={appId}
+                    platform={platform}
+                    locale={locale}
+                    group={deviceLabel + "生成图"}
+                    items={images.flatMap((image) =>
+                      image.result?.url ? [{ url: image.result.url }] : [],
+                    )}
+                  />
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    leftSection={<Sparkles size={14} />}
+                    onClick={() => setTab("create")}
+                  >
+                    再次生成
+                  </Button>
+                </Group>
               </Group>
               {loading && !images.length ? (
                 <Group justify="center" py="xl">

@@ -1,4 +1,5 @@
 "use client";
+import { BatchDownload } from "./batch-download";
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -426,6 +427,15 @@ export function StoreSyncPanel({
                                   {shots[0]?.height}
                                 </Text>
                               </div>
+                              <BatchDownload
+                                appId={app.id}
+                                platform={platform}
+                                locale={selectedLocale}
+                                group={groupLabel(device) + "商店截图"}
+                                items={shots.flatMap((image) =>
+                                  image.url ? [{ url: image.url }] : [],
+                                )}
+                              />
                             </Group>
                             <SimpleGrid
                               cols={{ base: 2, xs: 3, sm: 4 }}
@@ -470,6 +480,22 @@ export function StoreSyncPanel({
                 {"packageName" in snapshot && (
                   <Tabs.Panel value="graphics" pt="lg">
                     <Stack>
+                      <Group justify="flex-end">
+                        <BatchDownload
+                          appId={app.id}
+                          platform={platform}
+                          locale={selectedLocale}
+                          group="商店图片资源"
+                          items={graphicTypes.flatMap((type) => {
+                            const url =
+                              snapshot.locales[selectedLocale]?.graphics?.[type]
+                                ?.url;
+                            return url
+                              ? [{ url, label: graphicLabels[type] }]
+                              : [];
+                          })}
+                        />
+                      </Group>
                       {graphicTypes.map((type) => {
                         const image =
                           snapshot.locales[selectedLocale]?.graphics?.[type];

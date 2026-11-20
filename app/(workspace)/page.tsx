@@ -588,6 +588,8 @@ export default function Home() {
                   />
                   {platform === "google" && (
                     <StoreGraphicsEditor
+                      appId={app.id}
+                      locale={locale}
                       key={app.id + draftKey}
                       draft={draft}
                       enabled={editable && !!app.drafts[draftKey]}

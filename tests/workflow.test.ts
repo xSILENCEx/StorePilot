@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
@@ -37,6 +37,7 @@ import { checkpointReply } from "../lib/image-provider";
 import { GET as getApps, PUT as saveApps } from "../app/api/apps/route";
 import { GET as getImages, POST as generate } from "../app/api/images/route";
 import { DELETE as removeImage } from "../app/api/images/[id]/route";
+import { POST as archive } from "../app/api/assets/archive/route";
 import { POST as uploadAsset } from "../app/api/assets/route";
 import { GET as getAsset } from "../app/api/assets/[id]/route";
 import { POST as verify } from "../app/api/settings/[scope]/verify/route";
@@ -808,6 +809,23 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         assert.equal(deleted, 2);
       },
     );
+    await t.test("批量下载保留目录、顺序和图片原始内容", async () => {
+      const response = await archive(request("/api/assets/archive", "POST", {
+        appId, platform: "google", locale: "en-US", group: "手机截图",
+        items: [{ url: reference.url }, { url: reference.url }],
+      }));
+      assert.equal(response.status, 200);
+      const file = path.join(directory, "images.zip");
+      await writeFile(file, Buffer.from(await response.arrayBuffer()));
+      const inspect = spawnSync("python3", ["-c", [
+        "import json, sys, zipfile",
+        "with zipfile.ZipFile(sys.argv[1]) as archive:",
+        "    print(json.dumps([[n, archive.read(n).hex()] for n in archive.namelist()]))",
+      ].join("\n"), file]);
+      assert.equal(inspect.status, 0, inspect.stderr.toString());
+      assert.deepEqual(JSON.parse(inspect.stdout.toString()), ["01", "02"].map(index =>
+        [`GooglePlay_en-US_80x120/${index}_手机截图_80x120.png`, bytes.toString("hex")]));
+    });
     sqlite().pragma("integrity_check");
   } finally {
     globalThis.fetch = originalFetch;

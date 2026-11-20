@@ -1,4 +1,5 @@
 "use client";
+import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
 import { useState } from "react";
 import {
@@ -8,6 +9,7 @@ import {
   Loader,
   FileButton,
   Paper,
+  Group,
   SimpleGrid,
   Stack,
   Text,
@@ -23,10 +25,14 @@ import {
 } from "../lib/model";
 
 export function StoreGraphicsEditor({
+  appId,
+  locale,
   draft,
   enabled,
   updateDraft,
 }: {
+  appId: string;
+  locale: string;
   draft: Draft;
   enabled: boolean;
   updateDraft: (fn: (current: Draft) => Partial<Draft>) => void;
@@ -59,9 +65,21 @@ export function StoreGraphicsEditor({
   return (
     <Paper p={{ base: "md", sm: "xl" }}>
       <Stack gap="lg">
-        <Title order={3} size="h4">
-          商店图片资源
-        </Title>
+        <Group justify="space-between">
+          <Title order={3} size="h4">
+            商店图片资源
+          </Title>
+          <BatchDownload
+            appId={appId}
+            locale={locale}
+            platform="google"
+            group="商店图片资源"
+            items={graphicTypes.flatMap((type) => {
+              const url = draft.graphics?.[type];
+              return url ? [{ url, label: graphicLabels[type] }] : [];
+            })}
+          />
+        </Group>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           {graphicTypes.map((type) => {
             const url = draft.graphics?.[type];

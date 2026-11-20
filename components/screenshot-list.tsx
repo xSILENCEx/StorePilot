@@ -1,4 +1,5 @@
 "use client";
+import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
@@ -586,6 +587,13 @@ function ScreenshotGroup({
           </Text>
         </div>
         <Group gap="xs">
+          <BatchDownload
+            appId={appId}
+            platform={platform}
+            locale={locale}
+            group={group.label + "截图"}
+            items={images.map((url) => ({ url }))}
+          />
           <FileButton
             onChange={(files) => void upload(files)}
             accept="image/png,image/jpeg"
