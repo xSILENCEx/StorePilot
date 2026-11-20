@@ -105,3 +105,10 @@ test("截图翻译申请对齐模型的原生画布后只需缩小", () => {
   assert.equal(translationCanvas("gpt-image-2", 512, 512), "1024x1024");
   assert.equal(translationCanvas("custom", 1290, 2796), "1290x2796");
 });
+
+import { fitAppleKeywords } from "../lib/translation-reply";
+test("Apple 关键词按 UTF-8 字节保留完整词条", () => {
+  const word = "中".repeat(32);
+  assert.equal(fitAppleKeywords(word + "，较长词条,a"), word + ",a");
+  assert.throws(() => fitAppleKeywords("中".repeat(34)), /完整关键词/);
+});

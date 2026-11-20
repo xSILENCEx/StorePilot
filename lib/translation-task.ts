@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
-import { parseTranslationReply, TranslationError } from "./translation-reply";
+import {
+  fitAppleKeywords,
+  parseTranslationReply,
+  TranslationError,
+} from "./translation-reply";
 import { db } from "./db";
 import { storeSnapshots, workspaces, type Job } from "./schema";
 import { configFields } from "./config-model";
@@ -174,6 +178,18 @@ export async function translateJob(job: Job) {
         values,
         await translateText(job, texts, String(source), String(target)),
       );
+    if (
+      platform === "apple" &&
+      values.keywords &&
+      Buffer.byteLength(values.keywords, "utf8") > 100
+    ) {
+      values.keywords = fitAppleKeywords(values.keywords);
+      logJob(
+        job.id,
+        "keywords",
+        "已按模型返回顺序保留完整关键词，适配 100 字节限制",
+      );
+    }
     const limits = validateDraft(platform, {
       ...blankDraft(),
       ...Object.fromEntries(texts.map((t) => [t.id, values[t.id]])),

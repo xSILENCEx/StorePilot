@@ -53,3 +53,20 @@ export function parseTranslationReply(reply: unknown, expected: string[]) {
   }
   return result;
 }
+
+export function fitAppleKeywords(value: string) {
+  const selected: string[] = [];
+  let bytes = 0;
+  for (const raw of value.split(/[,，、]/u)) {
+    const term = raw.trim();
+    if (!term || selected.includes(term)) continue;
+    const cost = Buffer.byteLength(term, "utf8") + (selected.length ? 1 : 0);
+    if (bytes + cost <= 100) {
+      selected.push(term);
+      bytes += cost;
+    }
+  }
+  if (!selected.length)
+    throw new TranslationError("模型没有返回可放入 100 字节内的完整关键词");
+  return selected.join(",");
+}
