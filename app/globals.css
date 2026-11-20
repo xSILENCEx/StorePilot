@@ -60,7 +60,7 @@ a {
   z-index: 1;
 }
 .app-card-icon + .app-card-icon {
-  transform: translate(12px, 8px);
+  transform: translate(4px, 3px);
   transition: transform 220ms ease-in-out;
 }
 .app-card:is(:hover, :has(:focus-visible)) .app-card-icon + .app-card-icon {
