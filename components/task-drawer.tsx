@@ -29,6 +29,13 @@ const statuses: Record<string, string> = {
   failed: "失败",
   uncertain: "结果未知",
 };
+const statusColors: Record<string, string> = {
+  queued: "gray",
+  running: "blue",
+  succeeded: "green",
+  failed: "orange",
+  uncertain: "orange",
+};
 const kinds: Record<string, string> = {
   translate: "草稿翻译",
   generate_image: "图片生成",
@@ -105,13 +112,7 @@ export function TaskDrawer({
                     {j.languages && " · " + j.languages}
                   </Text>
                   <Badge
-                    color={
-                      j.status === "failed" || j.status === "uncertain"
-                        ? "orange"
-                        : j.status === "succeeded"
-                          ? "green"
-                          : "blue"
-                    }
+                    color={statusColors[j.status] ?? "gray"}
                     variant="light"
                   >
                     {statuses[j.status] ?? j.status}
