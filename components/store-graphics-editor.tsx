@@ -1,4 +1,5 @@
 "use client";
+import { hoverActionEvents } from "./hover-actions";
 import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
 import { useState } from "react";
@@ -92,7 +93,7 @@ export function StoreGraphicsEditor({
                     {type === "icon" ? "512 × 512" : "1024 × 500"} px
                   </Text>
                 </Text>
-                <div className="graphic-slot">
+                <div className="graphic-slot" {...hoverActionEvents}>
                   {url && (
                     <UnstyledButton
                       className="graphic-preview"

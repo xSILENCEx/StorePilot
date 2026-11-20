@@ -1,4 +1,5 @@
 "use client";
+import { hoverActionEvents } from "./hover-actions";
 import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
 import { Fragment, useEffect, useRef, useState } from "react";
@@ -703,7 +704,7 @@ function ScreenshotGroup({
                     transform: `translateX(calc(${offset * 100}% + ${offset} * var(--screenshot-gap)))`,
                   }}
                 >
-                  <div className="screenshot-thumbnail">
+                  <div className="screenshot-thumbnail" {...hoverActionEvents}>
                     <button
                       type="button"
                       className="preview-button"

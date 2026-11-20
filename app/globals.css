@@ -187,8 +187,8 @@ a {
   opacity: 0;
   pointer-events: none;
 }
-.screenshot-thumbnail:hover .screenshot-remove,
-.screenshot-thumbnail:focus-within .screenshot-remove {
+.screenshot-thumbnail:hover:not([data-hover-dismissed]) .screenshot-remove,
+.screenshot-thumbnail:has(:focus-visible) .screenshot-remove {
   opacity: 1;
   pointer-events: auto;
 }
@@ -299,7 +299,7 @@ a {
   box-shadow: 0 1px 5px #0003;
 }
 @media (hover: hover) {
-  .graphic-slot:not(:hover):not(:focus-within) .graphic-edit:not([data-loading]) {
+  .graphic-slot:is(:not(:hover), [data-hover-dismissed]):not(:has(:focus-visible)) .graphic-edit:not([data-loading]) {
     opacity: 0;
     pointer-events: none;
   }
