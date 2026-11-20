@@ -685,7 +685,7 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
                 });
           assert.match(
             url,
-            /\/en-US\/(sevenInchScreenshots|tenInchScreenshots|tvScreenshots|wearScreenshots)$/,
+            /\/en-US\/(sevenInchScreenshots|tenInchScreenshots)$/,
           );
           return Response.json({});
         };

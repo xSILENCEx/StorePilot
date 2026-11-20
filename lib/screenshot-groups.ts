@@ -35,12 +35,14 @@ const appleDevices = {
   WATCH_SERIES_4: "Apple Watch · Series 4 尺寸",
   WATCH_SERIES_3: "Apple Watch · Series 3 尺寸",
 };
-const googleDevices = {
+export const googleScreenshotDevices = {
   phoneScreenshots: "手机",
-  foldableSquare: "折叠屏 · 1:1 内屏",
-  foldableWide: "折叠屏 · 4:3 内屏",
   sevenInchScreenshots: "平板 · 7 英寸",
   tenInchScreenshots: "平板 · 10 英寸",
+};
+const historicalGoogleDevices: Record<string, string> = {
+  foldableSquare: "折叠屏 · 1:1 内屏",
+  foldableWide: "折叠屏 · 4:3 内屏",
   chromebook: "Chromebook",
   tvScreenshots: "Android TV",
   wearScreenshots: "Wear OS",
@@ -57,7 +59,7 @@ export function deviceGroups(
   existing: string[],
   catalog?: DeviceGroup[],
 ) {
-  const offline = platform === "apple" ? appleDevices : googleDevices;
+  const offline = platform === "apple" ? appleDevices : googleScreenshotDevices;
   const limit = platform === "apple" ? 10 : 8;
   const groups =
     platform === "apple" && catalog?.length
@@ -69,7 +71,8 @@ export function deviceGroups(
         }));
   for (const value of existing) {
     if (!groups.some((g) => g.value === value)) {
-      const labels: Record<string, string> = offline;
+      const labels: Record<string, string> =
+        platform === "google" ? historicalGoogleDevices : offline;
       groups.push({ value, label: labels[value] ?? value, limit });
     }
   }

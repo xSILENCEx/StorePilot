@@ -30,6 +30,17 @@ test("legacy drafts keep their unassigned screenshots and device groups have ind
   assert.deepEqual(groupImages(draft, "tenInchScreenshots"), []);
   assert.deepEqual(groupImages(draft, "phoneScreenshots"), [url]);
 });
+test("Google defaults to phone and tablets and keeps existing device groups accessible", () => {
+  const defaults = deviceGroups("google", []);
+  assert.deepEqual(
+    defaults.map((group) => group.value),
+    ["phoneScreenshots", "sevenInchScreenshots", "tenInchScreenshots"],
+  );
+  assert.deepEqual(deviceGroups("google", ["wearScreenshots"]), [
+    ...defaults,
+    { value: "wearScreenshots", label: "Wear OS", limit: 8 },
+  ]);
+});
 test("device limits are scoped to each platform and device group", () => {
   const images = Array.from(
     { length: 9 },

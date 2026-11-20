@@ -169,7 +169,9 @@ export function ScreenshotList(props: EditorProps) {
   const { draft, platform, catalog } = props;
   const available = deviceGroups(
     platform,
-    Object.keys(draft.screenshotGroups ?? {}),
+    Object.keys(draft.screenshotGroups ?? {}).filter(
+      (key) => platform === "apple" || groupImages(draft, key).length > 0,
+    ),
     catalog,
   );
   if (draft.images.length)

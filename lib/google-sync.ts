@@ -7,13 +7,8 @@ import {
 import { configFields } from "./config-model";
 import type { GoogleSnapshot } from "./apple-sync-model";
 
-const imageTypes = [
-  "phoneScreenshots",
-  "sevenInchScreenshots",
-  "tenInchScreenshots",
-  "tvScreenshots",
-  "wearScreenshots",
-];
+import { googleScreenshotDevices } from "./screenshot-groups";
+
 const listing = z.object({
   language: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
   title: z.string().default(""),
@@ -56,7 +51,7 @@ export async function readGoogleSnapshot(
     const locales: GoogleSnapshot["locales"] = {};
     for (const item of listings) {
       const screenshots: GoogleSnapshot["locales"][string]["screenshots"] = [];
-      for (const deviceType of imageTypes) {
+      for (const deviceType of Object.keys(googleScreenshotDevices)) {
         const { images } = imageList.parse(
           await request(
             `${url}/listings/${item.language}/${deviceType}`,
