@@ -30,7 +30,6 @@ import {
 } from "../lib/apple-sync-model";
 type State = {
   snapshot: AppleSnapshot | GoogleSnapshot | null;
-  previous: AppleSnapshot | GoogleSnapshot | null;
   stale: boolean;
   job: { status: string; result?: { error?: string; message?: string } } | null;
 };
@@ -127,7 +126,6 @@ export function StoreSyncPanel({
   const entry = snapshot?.locales[selectedLocale];
   const local = app.drafts[`${platform}:${selectedLocale}`];
   const differences = entry ? textDiff(local, entry.draft, platform) : [];
-  const previous = state?.previous?.locales[selectedLocale]?.draft;
   const groups = Object.groupBy(
     entry?.screenshots ?? [],
     (image) => image.deviceType,
@@ -395,9 +393,7 @@ export function StoreSyncPanel({
                                   </Group>
                                 </Accordion.Control>
                                 <Accordion.Panel>
-                                  <SimpleGrid
-                                    cols={{ base: 1, sm: previous ? 3 : 2 }}
-                                  >
+                                  <SimpleGrid cols={{ base: 1, sm: 2 }}>
                                     <div>
                                       <Text size="xs" c="dimmed">
                                         本地草稿
@@ -414,16 +410,6 @@ export function StoreSyncPanel({
                                         {remote || "（空）"}
                                       </p>
                                     </div>
-                                    {previous && (
-                                      <div>
-                                        <Text size="xs" c="dimmed">
-                                          上次商店资料
-                                        </Text>
-                                        <p className="diff-copy">
-                                          {previous[key] || "（空）"}
-                                        </p>
-                                      </div>
-                                    )}
                                   </SimpleGrid>
                                 </Accordion.Panel>
                               </Accordion.Item>

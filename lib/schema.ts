@@ -92,9 +92,6 @@ export const storeSnapshots = sqliteTable("store_snapshots", {
   current_snapshot: text("current_snapshot", { mode: "json" })
     .$type<AppleSnapshot>()
     .notNull(),
-  previous_snapshot: text("previous_snapshot", {
-    mode: "json",
-  }).$type<AppleSnapshot | null>(),
   updated_at: timestamp("updated_at"),
 });
 
@@ -104,8 +101,5 @@ export const googleSnapshots = sqliteTable("google_snapshots", {
   current_snapshot: text("current_snapshot", { mode: "json" })
     .$type<GoogleSnapshot>()
     .notNull(),
-  previous_snapshot: text("previous_snapshot", {
-    mode: "json",
-  }).$type<GoogleSnapshot | null>(),
   updated_at: timestamp("updated_at"),
 });

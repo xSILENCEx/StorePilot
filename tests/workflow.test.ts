@@ -529,7 +529,7 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
       assert.throws(() => claimJob("missing-lease"), /lease/);
     });
     await t.test(
-      "Apple 商店资料同步保存截图和元数据，保留本地草稿及前次快照",
+      "Apple 商店资料同步保存截图和元数据，覆盖快照并保留本地草稿",
       async () => {
         await saveConfig(
           "apple",
@@ -581,10 +581,7 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
           .from(storeSnapshots)
           .where(eq(storeSnapshots.app_id, appId))
           .get()!;
-        assert.equal(
-          second.previous_snapshot?.locales["en-US"].draft.title,
-          "Remote",
-        );
+        assert.equal(Object.hasOwn(second, "previous_snapshot"), false);
         assert.equal(
           second.current_snapshot.locales["en-US"].draft.title,
           "Changed",

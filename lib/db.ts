@@ -19,6 +19,21 @@ export function sqlite() {
     connection.exec(
       readFileSync(path.join(process.cwd(), "db/schema.sql"), "utf8"),
     );
+    connection
+      .transaction(() => {
+        for (const table of ["store_snapshots", "google_snapshots"]) {
+          const hasHistory = connection
+            .prepare(
+              `SELECT 1 FROM pragma_table_info(?) WHERE name = 'previous_snapshot'`,
+            )
+            .get(table);
+          if (hasHistory)
+            connection.exec(
+              `ALTER TABLE ${table} DROP COLUMN previous_snapshot`,
+            );
+        }
+      })
+      .immediate();
     cache.storepilotSqlite = connection;
   }
   return cache.storepilotSqlite;

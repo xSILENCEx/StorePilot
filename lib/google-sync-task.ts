@@ -57,19 +57,10 @@ export async function pullGoogleTask(
           ?.apps.find((a) => a.id === job.app_id);
         if (app?.google !== snapshot.packageName)
           throw new StoreSyncError("Google 应用包名已变更，未更新快照。");
-        const old = tx
-          .select()
-          .from(googleSnapshots)
-          .where(eq(googleSnapshots.app_id, job.app_id))
-          .get();
         const value = {
           app_id: job.app_id,
           config_revision: config.revision,
           current_snapshot: snapshot,
-          previous_snapshot:
-            old?.current_snapshot.packageName === snapshot.packageName
-              ? (old?.current_snapshot ?? null)
-              : null,
           updated_at: new Date().toISOString(),
         };
         tx.insert(googleSnapshots)

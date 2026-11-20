@@ -39,7 +39,6 @@ export async function getStoreSync(
       .get();
     return json({
       snapshot: snapshot?.current_snapshot ?? null,
-      previous: snapshot?.previous_snapshot ?? null,
       stale: !!snapshot && snapshot.config_revision !== config?.revision,
       job: job ?? null,
     });

@@ -52,21 +52,10 @@ export async function pullAppleTask(
           ?.apps.find((a) => a.id === job.app_id);
         if (!app?.apple)
           throw new AppleReadError("Apple 应用已移除，未更新快照。");
-        const old = tx
-          .select()
-          .from(storeSnapshots)
-          .where(eq(storeSnapshots.app_id, job.app_id))
-          .get();
         const value = {
           app_id: job.app_id,
           config_revision: config.revision,
           current_snapshot: snapshot,
-          previous_snapshot:
-            old?.current_snapshot.target.versionId ===
-              snapshot.target.versionId &&
-            old?.current_snapshot.target.appInfoId === snapshot.target.appInfoId
-              ? (old?.current_snapshot ?? null)
-              : null,
           updated_at: new Date().toISOString(),
         };
         tx.insert(storeSnapshots)
