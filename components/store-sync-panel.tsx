@@ -174,6 +174,7 @@ export function StoreSyncPanel({
         position="right"
         title={store + " 商店资料"}
         size="xl"
+        styles={{ content: { scrollbarGutter: "stable" } }}
         closeButtonProps={{ "aria-label": "关闭商店资料" }}
       >
         <Stack gap="lg">
