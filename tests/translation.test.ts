@@ -66,3 +66,35 @@ test("根据平台提供对应的文案、网址和图片资源", () => {
     ],
   );
 });
+
+import { parseTranslationReply } from "../lib/translation-reply";
+test("兼容分段、字段包装及关键词数组，缺失字段和截断仍报错", () => {
+  const message = {
+    content: [
+      {
+        type: "text",
+        text: '译文：{"fields":{"title":"App","keywords":["a","b"]},"target":"de"}',
+      },
+    ],
+  };
+  assert.deepEqual(
+    parseTranslationReply({ choices: [{ message }] }, ["title", "keywords"]),
+    { title: "App", keywords: "a,b" },
+  );
+  assert.throws(
+    () =>
+      parseTranslationReply({ choices: [{ message }] }, [
+        "title",
+        "description",
+      ]),
+    /description/,
+  );
+  assert.throws(
+    () =>
+      parseTranslationReply(
+        { choices: [{ message, finish_reason: "length" }] },
+        ["title"],
+      ),
+    /截断/,
+  );
+});

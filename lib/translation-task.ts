@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import { parseTranslationReply, TranslationError } from "./translation-reply";
 import { db } from "./db";
 import { storeSnapshots, workspaces, type Job } from "./schema";
 import { configFields } from "./config-model";
@@ -30,7 +30,6 @@ import {
 } from "./translation";
 import { ImageSizeError, prepareStoreImage } from "./prepare-store-image";
 
-class TranslationError extends Error {}
 async function model(scope: "text" | "image", revision: unknown) {
   const config = await workerConfig(scope);
   if (config.revision !== revision)
@@ -80,27 +79,14 @@ async function translateText(
       "文字模型请求失败（HTTP " + response.status + "）",
     );
   }
+  const raw = await readLimited(response, 1024 * 1024);
+  let reply;
   try {
-    const reply = JSON.parse(
-      (await readLimited(response, 1024 * 1024)).toString(),
-    );
-    const content = z
-      .string()
-      .parse(reply.choices?.[0]?.message?.content)
-      .trim()
-      .replace(/^\x60\x60\x60(?:json)?\s*|\s*\x60\x60\x60$/gi, "");
-    const result = z
-      .record(z.string(), z.string().trim().min(1))
-      .parse(JSON.parse(content));
-    if (
-      Object.keys(result).length !== items.length ||
-      items.some((i) => !Object.hasOwn(result, i.id))
-    )
-      throw new Error();
-    return result;
+    reply = JSON.parse(raw.toString());
   } catch {
-    throw new TranslationError("文字模型返回的字段不完整或格式无效");
+    throw new TranslationError("文字接口响应不是有效 JSON");
   }
+  return parseTranslationReply(reply, Object.keys(original));
 }
 async function translateImage(
   job: Job,
@@ -126,20 +112,22 @@ async function translateImage(
   );
   const image = sharp(await replyBuffer(reply), { limitInputPixels: 40000000 });
   const size = (await image.metadata()).autoOrient;
+  const closeRatio =
+    Math.min(size.width * height, size.height * width) >=
+    0.995 * Math.max(size.width * height, size.height * width);
+  const fitsOriginal =
+    closeRatio && size.width >= width && size.height >= height;
   if (
-    size.width < width ||
-    size.height < height ||
-    Math.min(size.width * height, size.height * width) <
-      0.995 * Math.max(size.width * height, size.height * width)
+    !closeRatio ||
+    (!fitsOriginal && item.kind === "screenshot" && item.group === "ungrouped")
   )
     throw new TranslationError(
-      item.label + "：模型输出尺寸无法在不放大的情况下适配原图",
+      `${item.label}：模型输出 ${size.width}×${size.height}，来源 ${width}×${height}，无法在允许的比例和尺寸范围内适配`,
     );
-  let bytes: Buffer = await image
-    .autoOrient()
-    .resize(width, height, { fit: "cover", withoutEnlargement: true })
-    .png()
-    .toBuffer();
+  const pipeline = image.autoOrient();
+  if (fitsOriginal)
+    pipeline.resize(width, height, { fit: "cover", withoutEnlargement: true });
+  let bytes: Buffer = await pipeline.png().toBuffer();
   if (item.kind === "graphic")
     bytes = await prepareStoreImage(bytes, {
       kind: "graphic",
@@ -184,6 +172,17 @@ export async function translateJob(job: Job) {
         values,
         await translateText(job, texts, String(source), String(target)),
       );
+    const limits = validateDraft(platform, {
+      ...blankDraft(),
+      ...Object.fromEntries(texts.map((t) => [t.id, values[t.id]])),
+    });
+    if (
+      (values.promotionalText &&
+        Array.from(values.promotionalText).length > 170) ||
+      (values.whatsNew && Array.from(values.whatsNew).length > 4000)
+    )
+      limits.push("译文超过商店字段长度限制");
+    if (limits.length) throw new TranslationError(limits.join("；"));
     for (const item of items) {
       if (item.kind === "text") continue;
       assertWorkerActive();
@@ -205,17 +204,6 @@ export async function translateJob(job: Job) {
     const translated = draftSchema.parse(
       applyTranslation(before ?? blankDraft(), items, values),
     );
-    const limits = validateDraft(platform, {
-      ...blankDraft(),
-      ...Object.fromEntries(texts.map((t) => [t.id, values[t.id]])),
-    });
-    if (
-      (values.promotionalText &&
-        Array.from(values.promotionalText).length > 170) ||
-      (values.whatsNew && Array.from(values.whatsNew).length > 4000)
-    )
-      limits.push("译文超过商店字段长度限制");
-    if (limits.length) throw new TranslationError(limits.join("；"));
     db().transaction(
       (tx) => {
         assertWorkerActive();
