@@ -397,7 +397,13 @@ export default function Home() {
               </Button>
               <Group justify="space-between">
                 <Group gap="md">
-                  <Avatar size={54} radius="lg" color="blue">
+                  <Avatar
+                    size={54}
+                    radius="lg"
+                    color="blue"
+                    src={app.platformIcons?.[platform]}
+                    alt={`${app.name} ${platform === "apple" ? "App Store" : "Google Play"} 图标`}
+                  >
                     {app.name.slice(0, 1).toUpperCase()}
                   </Avatar>
                   <div>
