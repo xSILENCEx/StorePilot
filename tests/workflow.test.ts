@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { randomBytes, randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
@@ -26,6 +26,11 @@ import {
 } from "../lib/worker";
 import { enqueue, finishJob } from "../lib/job-store";
 import { workerContext } from "../lib/worker-context";
+import {
+  POST as queueGoogle,
+  GET as googleState,
+} from "../app/api/google-sync/route";
+import { pullGoogleTask } from "../lib/google-sync-task";
 import { pullAppleTask } from "../lib/apple-sync-task";
 import { executeJob } from "../lib/tasks";
 import { checkpointReply } from "../lib/image-provider";
@@ -629,6 +634,96 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
             .get()?.current_snapshot.locales["en-US"].draft.title,
           "Changed",
         );
+      },
+    );
+    await t.test(
+      "Google 快照保存本地化文案和分组截图，失败时保留完整快照",
+      async () => {
+        const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+          .privateKey.export({ format: "pem", type: "pkcs8" })
+          .toString();
+        await saveConfig(
+          "google",
+          appId,
+          1,
+          { packageName: app.google },
+          JSON.stringify({
+            type: "service_account",
+            client_email: "test@project.iam.gserviceaccount.com",
+            private_key: privateKey,
+          }),
+        );
+        let fail = false;
+        let deleted = 0;
+        globalThis.fetch = async (input, init) => {
+          const url = String(input);
+          if (url.endsWith("/token"))
+            return Response.json({ access_token: "test" });
+          if (url.endsWith("/edits") && init?.method === "POST")
+            return Response.json({ id: "abc" });
+          if (url.endsWith("/edits/abc") && init?.method === "DELETE") {
+            deleted++;
+            return new Response(null, { status: 204 });
+          }
+          if (url.endsWith("/listings"))
+            return Response.json({
+              listings: [
+                {
+                  language: "en-US",
+                  title: "Play",
+                  shortDescription: "Short",
+                  fullDescription: "Full",
+                  video: "https://youtu.be/example",
+                },
+              ],
+            });
+          if (url.endsWith("/en-US/phoneScreenshots"))
+            return fail
+              ? new Response(null, { status: 403 })
+              : Response.json({
+                  images: [{ id: "shot", url: "https://example.com/shot" }],
+                });
+          assert.match(
+            url,
+            /\/en-US\/(sevenInchScreenshots|tenInchScreenshots|tvScreenshots|wearScreenshots)$/,
+          );
+          return Response.json({});
+        };
+        for (const shouldFail of [false, true]) {
+          fail = shouldFail;
+          const queue = () =>
+            queueGoogle(request("/api/google-sync", "POST", { appId }));
+          assert.equal((await queue()).status, 202);
+          assert.equal((await queue()).status, 409);
+          const owner = randomUUID();
+          assert.ok(acquireWorker(owner));
+          try {
+            await pullGoogleTask(claimJob(owner)!, async () => bytes);
+          } finally {
+            releaseWorker(owner);
+          }
+          const state = await (
+            await googleState(request("/api/google-sync?appId=" + appId))
+          ).json();
+          assert.equal(state.job.status, fail ? "failed" : "succeeded");
+          const entry = state.snapshot.locales["en-US"];
+          assert.equal(entry.draft.subtitle, "Short");
+          assert.equal(entry.draft.video, "https://youtu.be/example");
+          assert.equal(entry.screenshots[0].deviceType, "phoneScreenshots");
+          assert.match(entry.screenshots[0].url, /^\/api\/assets\//);
+          assert.equal(
+            db().select().from(workspaces).get()?.apps[0].drafts["google:en-US"]
+              .title,
+            "Test",
+          );
+          assert.equal(
+            db().select().from(storeSnapshots).get()?.current_snapshot.locales[
+              "en-US"
+            ].draft.title,
+            "Changed",
+          );
+        }
+        assert.equal(deleted, 2);
       },
     );
     sqlite().pragma("integrity_check");

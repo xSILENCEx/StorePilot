@@ -7,6 +7,7 @@ export const draftSchema = z.object({
   subtitle: z.string().max(1000),
   description: z.string().max(20000),
   keywords: z.string().max(2000),
+  video: z.string().max(2000).optional(),
   promotionalText: z.string().max(10000).optional(),
   whatsNew: z.string().max(20000).optional(),
   supportUrl: z.string().max(2000).optional(),

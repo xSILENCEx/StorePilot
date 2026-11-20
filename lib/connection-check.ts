@@ -41,69 +41,7 @@ export async function checkConnection(
     steps.push({ step: name, message });
     await onStep(name, message);
   }
-  async function request(
-    url: string,
-    init: RequestInit,
-    stage: string,
-    timeout = 30000,
-  ): Promise<Record<string, unknown>> {
-    let response: Response;
-    try {
-      response = await fetcher(url, {
-        ...init,
-        redirect: "error",
-        signal: AbortSignal.timeout(timeout),
-      });
-    } catch (e) {
-      const error = e as { name?: string; cause?: { code?: string } };
-      throw new CheckError(
-        stage,
-        error.name === "TimeoutError" || error.name === "AbortError"
-          ? "连接超时，请检查本机网络和目标服务。"
-          : `无法连接目标服务${error.cause?.code && /^[A-Z_]+$/.test(error.cause.code) ? `（${error.cause.code}）` : ""}，请检查打包机网络、DNS、代理或 TLS。`,
-      );
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      const help: Record<number, string> = {
-        400: "请求被拒绝：请检查凭据、服务账号或应用配置；Google 服务账号还需检查本机时间。",
-        401: "鉴权失败：请检查密钥是否正确、过期或已撤销，以及本机时间。",
-        403: "权限不足或 API 尚未启用，请检查对应服务的账号授权。",
-        404: "应用、模型目录或 API 地址不存在，或当前账号不可见。",
-        429: "触发限流或账户配额限制，请稍后重试。",
-      };
-      throw new CheckError(
-        stage,
-        `HTTP ${response.status}：${help[response.status] ?? "服务请求失败，请检查服务状态后重试。"}`,
-      );
-    }
-    if (response.status === 204) return {};
-    try {
-      const reader = response.body?.getReader();
-      if (!reader) return {};
-      let size = 0;
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        size += chunk.value.byteLength;
-        if (size > 4 * 1024 * 1024) {
-          await reader.cancel();
-          throw new Error();
-        }
-        chunks.push(chunk.value);
-      }
-      const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-      if (!data || typeof data !== "object" || Array.isArray(data))
-        throw new Error();
-      return data;
-    } catch {
-      throw new CheckError(
-        stage,
-        "服务响应格式不兼容或响应过大；请检查 API 地址和兼容协议。",
-      );
-    }
-  }
+  const request = storeRequest.bind(null, fetcher);
   try {
     if (scope === "apple") {
       const fields = configFields.apple.parse(config.fields);
@@ -146,35 +84,8 @@ export async function checkConnection(
     }
     if (scope === "google") {
       const fields = configFields.google.parse(config.fields);
-      const account = JSON.parse(config.secret);
-      const now = Math.floor(Date.now() / 1000);
-      const assertion = jwt(
-        { alg: "RS256", typ: "JWT" },
-        {
-          iss: account.client_email,
-          scope: "https://www.googleapis.com/auth/androidpublisher",
-          aud: "https://oauth2.googleapis.com/token",
-          iat: now - 5,
-          exp: now + 600,
-        },
-        account.private_key,
-        "RS256",
-      );
       await step("google_auth", "检查 Google 服务账号 OAuth 鉴权");
-      const auth = await request(
-        "https://oauth2.googleapis.com/token",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            assertion,
-          }),
-        },
-        "google_auth",
-      );
-      if (typeof auth.access_token !== "string" || !auth.access_token)
-        throw new CheckError("google_auth", "OAuth 未返回有效访问令牌");
+      const token = await googleAccessToken(config.secret, fetcher);
       await step("google_auth", "服务账号鉴权成功");
       if (!options.verifyApplication)
         return {
@@ -186,7 +97,7 @@ export async function checkConnection(
         };
       const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(fields.packageName)}/edits`;
       const headers = {
-        Authorization: `Bearer ${auth.access_token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       };
       await step("google_edit", "创建临时 edit，以检查应用访问权限");
@@ -282,4 +193,104 @@ export async function checkConnection(
       steps,
     };
   }
+}
+
+export async function storeRequest(
+  fetcher: typeof fetch,
+  url: string,
+  init: RequestInit,
+  stage: string,
+  timeout = 30000,
+): Promise<Record<string, unknown>> {
+  let response: Response;
+  try {
+    response = await fetcher(url, {
+      ...init,
+      redirect: "error",
+      signal: AbortSignal.timeout(timeout),
+    });
+  } catch (e) {
+    const error = e as { name?: string; cause?: { code?: string } };
+    throw new CheckError(
+      stage,
+      error.name === "TimeoutError" || error.name === "AbortError"
+        ? "连接超时，请检查本机网络和目标服务。"
+        : `无法连接目标服务${error.cause?.code && /^[A-Z_]+$/.test(error.cause.code) ? `（${error.cause.code}）` : ""}，请检查打包机网络、DNS、代理或 TLS。`,
+    );
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    const help: Record<number, string> = {
+      400: "请求被拒绝：请检查凭据、服务账号或应用配置；Google 服务账号还需检查本机时间。",
+      401: "鉴权失败：请检查密钥是否正确、过期或已撤销，以及本机时间。",
+      403: "权限不足或 API 尚未启用，请检查对应服务的账号授权。",
+      404: "应用、模型目录或 API 地址不存在，或当前账号不可见。",
+      429: "触发限流或账户配额限制，请稍后重试。",
+    };
+    throw new CheckError(
+      stage,
+      `HTTP ${response.status}：${help[response.status] ?? "服务请求失败，请检查服务状态后重试。"}`,
+    );
+  }
+  if (response.status === 204) return {};
+  try {
+    const reader = response.body?.getReader();
+    if (!reader) return {};
+    let size = 0;
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > 4 * 1024 * 1024) {
+        await reader.cancel();
+        throw new Error();
+      }
+      chunks.push(chunk.value);
+    }
+    if (init.method === "DELETE" && !size) return {};
+    const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (!data || typeof data !== "object" || Array.isArray(data))
+      throw new Error();
+    return data;
+  } catch {
+    throw new CheckError(
+      stage,
+      "服务响应格式不兼容或响应过大；请检查 API 地址和兼容协议。",
+    );
+  }
+}
+
+export async function googleAccessToken(secret: string, fetcher: typeof fetch) {
+  const request = storeRequest.bind(null, fetcher);
+  const account = JSON.parse(secret);
+  const now = Math.floor(Date.now() / 1000);
+  const assertion = jwt(
+    { alg: "RS256", typ: "JWT" },
+    {
+      iss: account.client_email,
+      scope: "https://www.googleapis.com/auth/androidpublisher",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now - 5,
+      exp: now + 600,
+    },
+    account.private_key,
+    "RS256",
+  );
+
+  const auth = await request(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion,
+      }),
+    },
+    "google_auth",
+  );
+  if (typeof auth.access_token !== "string" || !auth.access_token)
+    throw new CheckError("google_auth", "OAuth 未返回有效访问令牌");
+  return auth.access_token;
 }

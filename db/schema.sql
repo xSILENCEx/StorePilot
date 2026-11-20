@@ -7,3 +7,4 @@ create index if not exists jobs_status_created on jobs(status,created_at);
 create table if not exists job_logs (id integer primary key autoincrement,job_id text not null references jobs(id) on delete cascade,step text not null,message text not null,created_at text not null);
 create table if not exists store_snapshots (app_id text primary key,config_revision integer not null,current_snapshot text not null,previous_snapshot text,updated_at text not null);
 create table if not exists worker_lease (id integer primary key check(id=1),owner text not null,expires_at integer not null);
+create table if not exists google_snapshots (app_id text primary key,config_revision integer not null,current_snapshot text not null,previous_snapshot text,updated_at text not null);

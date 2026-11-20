@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import type { StoreApp } from "./model";
-import type { AppleSnapshot } from "./apple-sync-model";
+import type { AppleSnapshot, GoogleSnapshot } from "./apple-sync-model";
 const timestamp = (name: string) =>
   text(name)
     .notNull()
@@ -58,6 +58,7 @@ export const jobs = sqliteTable(
         "generate_image",
         "verify_connection",
         "pull_apple",
+        "pull_google",
         "validate_draft",
       ],
     }).notNull(),
@@ -94,5 +95,17 @@ export const storeSnapshots = sqliteTable("store_snapshots", {
   previous_snapshot: text("previous_snapshot", {
     mode: "json",
   }).$type<AppleSnapshot | null>(),
+  updated_at: timestamp("updated_at"),
+});
+
+export const googleSnapshots = sqliteTable("google_snapshots", {
+  app_id: text("app_id").primaryKey(),
+  config_revision: integer("config_revision").notNull(),
+  current_snapshot: text("current_snapshot", { mode: "json" })
+    .$type<GoogleSnapshot>()
+    .notNull(),
+  previous_snapshot: text("previous_snapshot", {
+    mode: "json",
+  }).$type<GoogleSnapshot | null>(),
   updated_at: timestamp("updated_at"),
 });

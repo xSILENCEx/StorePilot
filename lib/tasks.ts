@@ -4,6 +4,7 @@ import { appSchema, validateDraft, platformSchema } from "./model";
 import { assetPath } from "./storage";
 import { generateImageTask } from "./image-task";
 import { verifyConnectionTask } from "./connection-task";
+import { pullGoogleTask } from "./google-sync-task";
 import { pullAppleTask } from "./apple-sync-task";
 import { finishJob, logJob } from "./job-store";
 import type { Job } from "./schema";
@@ -14,6 +15,8 @@ export async function executeJob(job: Job) {
         return await generateImageTask(job);
       case "verify_connection":
         return await verifyConnectionTask(job);
+      case "pull_google":
+        return await pullGoogleTask(job);
       case "pull_apple":
         return await pullAppleTask(job);
       case "validate_draft": {

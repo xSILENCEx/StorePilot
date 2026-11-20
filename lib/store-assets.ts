@@ -4,12 +4,12 @@ import { db } from "./db";
 import { assets } from "./schema";
 import { assetPath, storeAsset } from "./storage";
 import { downloadImage } from "./image-provider";
-import { AppleReadError } from "./apple-sync";
-import type { AppleSnapshot } from "./apple-sync-model";
+export class StoreSyncError extends Error {}
+import type { StoreLocales } from "./apple-sync-model";
 // API credentials are never attached to CDN requests. Files remain behind the local auth API.
-export async function saveAppleScreenshots(
-  snapshot: AppleSnapshot,
-  previous?: AppleSnapshot,
+export async function saveStoreScreenshots(
+  snapshot: { locales: StoreLocales },
+  previous?: { locales: StoreLocales },
   download = downloadImage,
 ) {
   const cached = new Map<string, string>();
@@ -24,13 +24,20 @@ export async function saveAppleScreenshots(
         const cachedUrl = cached.get(image.sourceUrl);
         if (cachedUrl) {
           const id = cachedUrl.split("/").at(-1)!;
+          const asset = db()
+            .select()
+            .from(assets)
+            .where(eq(assets.id, id))
+            .get();
           if (
-            db().select().from(assets).where(eq(assets.id, id)).get() &&
+            asset &&
             (await access(assetPath(id)).then(
               () => true,
               () => false,
             ))
           ) {
+            image.width = asset.width;
+            image.height = asset.height;
             image.url = cachedUrl;
             saved++;
             continue;
@@ -45,7 +52,7 @@ export async function saveAppleScreenshots(
         cached.set(image.sourceUrl, asset.url);
         saved++;
       } catch {
-        throw new AppleReadError(
+        throw new StoreSyncError(
           "商店截图下载或保存失败，本次未替换上次资料快照。请检查网络、素材地址与本机存储后重试。",
         );
       }

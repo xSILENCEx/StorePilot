@@ -1,5 +1,5 @@
 import type { DeviceGroup } from "./screenshot-groups";
-import type { Draft } from "./model";
+import type { Draft, Platform } from "./model";
 export const textFields = [
   "title",
   "subtitle",
@@ -58,19 +58,40 @@ export type AppleSnapshot = {
   >;
   fetchedAt: string;
 };
-export function textDiff(local: Draft | undefined, remote: Draft) {
-  return textFields.filter(
-    (field) => !local || (local[field] ?? "") !== (remote[field] ?? ""),
-  );
+export type StoreLocales = Record<
+  string,
+  { draft: Draft; screenshots: AppleScreenshot[] }
+>;
+export type GoogleSnapshot = {
+  packageName: string;
+  fetchedAt: string;
+  warnings: string[];
+  locales: StoreLocales;
+};
+export const googleTextFields = [
+  "title",
+  "subtitle",
+  "description",
+  "video",
+] as const;
+export function textDiff(
+  local: Draft | undefined,
+  remote: Draft,
+  platform: Platform = "apple",
+) {
+  return (
+    platform === "apple" ? [...textFields] : [...googleTextFields]
+  ).filter((field) => !local || (local[field] ?? "") !== (remote[field] ?? ""));
 }
 // Only missing languages are imported. Existing drafts (including intentionally empty ones) are never replaced.
 export function importMissing(
   drafts: Record<string, Draft>,
-  snapshot: AppleSnapshot,
+  snapshot: { locales: StoreLocales },
+  platform: Platform = "apple",
 ) {
   const next = { ...drafts };
   for (const [locale, value] of Object.entries(snapshot.locales)) {
-    const key = `apple:${locale}`;
+    const key = `${platform}:${locale}`;
     if (!Object.hasOwn(next, key)) next[key] = { ...value.draft, images: [] };
   }
   return next;

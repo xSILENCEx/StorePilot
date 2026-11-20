@@ -30,6 +30,7 @@ const statuses: Record<string, string> = {
 };
 const kinds: Record<string, string> = {
   generate_image: "图片生成",
+  pull_google: "Google Play 商店资料同步",
   pull_apple: "Apple 商店资料同步",
   verify_connection: "连接验证",
   validate_draft: "草稿校验",

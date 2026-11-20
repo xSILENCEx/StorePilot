@@ -64,6 +64,12 @@ export async function recoverJobs() {
         continue;
       }
     }
+    if (job.kind === "pull_google") {
+      const message = "同步中断，请检查临时 edit 后重新同步。";
+      finishJob(job.id, "uncertain", { error: message });
+      logJob(job.id, "interrupted", message);
+      continue;
+    }
     if (job.kind === "verify_connection" && job.input.verifyApplication) {
       const message =
         "权限验证中断，请先检查 Google 临时 edit 状态，再手动验证。";

@@ -18,17 +18,19 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { CloudDownload, Download, ImagePlus } from "lucide-react";
-import type { Draft, StoreApp } from "../lib/model";
+import { deviceGroups } from "../lib/screenshot-groups";
+import type { Draft, StoreApp, Platform } from "../lib/model";
 import {
   appleDeviceLabel,
   importMissing,
   textDiff,
   type AppleScreenshot,
   type AppleSnapshot,
+  type GoogleSnapshot,
 } from "../lib/apple-sync-model";
 type State = {
-  snapshot: AppleSnapshot | null;
-  previous: AppleSnapshot | null;
+  snapshot: AppleSnapshot | GoogleSnapshot | null;
+  previous: AppleSnapshot | GoogleSnapshot | null;
   stale: boolean;
   job: { status: string; result?: { error?: string; message?: string } } | null;
 };
@@ -44,8 +46,9 @@ const labels: Record<string, string> = {
   privacyPolicyUrl: "隐私政策网址",
   privacyChoicesUrl: "隐私选择网址",
 };
-export function AppleSyncPanel({
+export function StoreSyncPanel({
   app,
+  platform,
   locale,
   enabled,
   onImport,
@@ -54,10 +57,11 @@ export function AppleSyncPanel({
   onCatalog,
 }: {
   app: StoreApp;
+  platform: Platform;
   locale: string;
   enabled: boolean;
   onCatalog: (catalog: AppleSnapshot["deviceGroups"]) => void;
-  onImport: (snapshot: AppleSnapshot) => void;
+  onImport: (snapshot: AppleSnapshot | GoogleSnapshot) => void;
   onImportLocale: (locale: string, draft: Draft) => boolean;
   onImportScreenshots: (
     locale: string,
@@ -65,6 +69,15 @@ export function AppleSyncPanel({
     images: AppleScreenshot[],
   ) => boolean;
 }) {
+  const apple = platform === "apple";
+  const store = apple ? "Apple" : "Google Play";
+  const endpoint = `/api/${platform}-sync`;
+  const groupLabel = (device: string) =>
+    apple
+      ? appleDeviceLabel(device)
+      : deviceGroups("google", [device]).find(
+          (group) => group.value === device,
+        )!.label;
   const [opened, setOpened] = useState(false);
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState("");
@@ -78,7 +91,7 @@ export function AppleSyncPanel({
     const controller = new AbortController();
     const refresh = async () => {
       try {
-        const r = await fetch(`/api/apple-sync?appId=${app.id}`, {
+        const r = await fetch(`${endpoint}?appId=${app.id}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -86,7 +99,8 @@ export function AppleSyncPanel({
         if (!r.ok) throw new Error(data.error);
         if (!controller.signal.aborted) {
           setState(data);
-          onCatalog(data.stale ? undefined : data.snapshot?.deviceGroups);
+          if (apple)
+            onCatalog(data.stale ? undefined : data.snapshot?.deviceGroups);
         }
       } catch (e) {
         if (!controller.signal.aborted)
@@ -99,20 +113,20 @@ export function AppleSyncPanel({
       controller.abort();
       clearInterval(timer);
     };
-  }, [app.id, opened, onCatalog]);
+  }, [app.id, opened, onCatalog, endpoint, apple]);
   const pending =
     busy || ["queued", "running"].includes(state?.job?.status ?? "");
   const snapshot = state?.snapshot;
   const missing = snapshot
-    ? Object.keys(importMissing(app.drafts, snapshot)).length -
+    ? Object.keys(importMissing(app.drafts, snapshot, platform)).length -
       Object.keys(app.drafts).length
     : 0;
   const selectedLocale = snapshot?.locales[activeLocale]
     ? activeLocale
     : Object.keys(snapshot?.locales ?? {})[0];
   const entry = snapshot?.locales[selectedLocale];
-  const local = app.drafts[`apple:${selectedLocale}`];
-  const differences = entry ? textDiff(local, entry.draft) : [];
+  const local = app.drafts[`${platform}:${selectedLocale}`];
+  const differences = entry ? textDiff(local, entry.draft, platform) : [];
   const previous = state?.previous?.locales[selectedLocale]?.draft;
   const groups = Object.groupBy(
     entry?.screenshots ?? [],
@@ -126,10 +140,12 @@ export function AppleSyncPanel({
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/apple-sync", {
+      const r = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appId: app.id, appInfoId }),
+        body: JSON.stringify(
+          apple ? { appId: app.id, appInfoId } : { appId: app.id },
+        ),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
@@ -156,19 +172,26 @@ export function AppleSyncPanel({
         opened={opened && !preview}
         onClose={() => setOpened(false)}
         position="right"
-        title="Apple 商店资料"
+        title={store + " 商店资料"}
         size="xl"
         closeButtonProps={{ "aria-label": "关闭商店资料" }}
       >
         <Stack gap="lg">
           <Text size="sm" c="dimmed">
-            同步 App Store
+            同步 {store}
             的元数据与截图，查看差异并选择导入。现有草稿不会自动覆盖。
           </Text>
+          {!apple && (
+            <Text size="sm" c="dimmed">
+              同步将创建临时 Google Play
+              edit。请避开同一服务账号对该应用的其他编辑任务，以免使进行中的
+              edit 失效。
+            </Text>
+          )}
           {!enabled && (
             <Alert color="orange">
               请先保存草稿并完成{" "}
-              <a href={`/settings?appId=${app.id}`}>Apple 连接配置</a>。
+              <a href={`/settings?appId=${app.id}`}>{store} 连接配置</a>。
             </Alert>
           )}
           {error && <Alert color="red">{error}</Alert>}
@@ -176,13 +199,17 @@ export function AppleSyncPanel({
             <div>
               <Text size="sm" fw={550}>
                 {snapshot
-                  ? `${snapshot.target.platform} · ${snapshot.target.version}`
+                  ? "packageName" in snapshot
+                    ? snapshot.packageName
+                    : `${snapshot.target.platform} · ${snapshot.target.version}`
                   : "尚未同步商店资料"}
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
                 {snapshot
                   ? `${Object.keys(snapshot.locales).length} 种语言 · ${screenshotCount} 张截图 · ${new Date(snapshot.fetchedAt).toLocaleString()}`
-                  : "未指定版本时，优先读取已上架版本，否则读取最新版本。"}
+                  : !apple
+                    ? "读取当前 Google Play 主商店详情。"
+                    : "未指定版本时，优先读取已上架版本，否则读取最新版本。"}
               </Text>
             </div>
             <Button
@@ -194,23 +221,26 @@ export function AppleSyncPanel({
               {snapshot ? "重新同步" : "同步商店资料"}
             </Button>
           </Group>
-          <Accordion variant="default">
-            <Accordion.Item value="advanced">
-              <Accordion.Control>高级选项</Accordion.Control>
-              <Accordion.Panel>
-                <TextInput
-                  label="应用资料 ID（可选）"
-                  description="自动匹配所选版本的资料。仅在无法唯一确定时填写。"
-                  value={appInfoId}
-                  onChange={(e) => setInfo(e.currentTarget.value)}
-                />
-                <Text size="xs" c="dimmed" mt="sm">
-                  如需读取指定版本，可在 Apple 连接配置中填写目标版本号。
-                </Text>
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
-          {state?.job?.status === "failed" && (
+          {apple && (
+            <Accordion variant="default">
+              <Accordion.Item value="advanced">
+                <Accordion.Control>高级选项</Accordion.Control>
+                <Accordion.Panel>
+                  <TextInput
+                    label="应用资料 ID（可选）"
+                    description="自动匹配所选版本的资料。仅在无法唯一确定时填写。"
+                    value={appInfoId}
+                    onChange={(e) => setInfo(e.currentTarget.value)}
+                  />
+                  <Text size="xs" c="dimmed" mt="sm">
+                    如需读取指定版本，可在 Apple 连接配置中填写目标版本号。
+                  </Text>
+                </Accordion.Panel>
+              </Accordion.Item>
+            </Accordion>
+          )}
+          {(state?.job?.status === "failed" ||
+            state?.job?.status === "uncertain") && (
             <Alert color="red">{state.job.result?.error ?? "同步失败"}</Alert>
           )}
           {pending && (
@@ -332,7 +362,16 @@ export function AppleSyncPanel({
                               : "与本地元数据一致。"}
                         </Text>
                         <Accordion variant="separated">
-                          {Object.entries(labels).map(([field, label]) => {
+                          {Object.entries(
+                            apple
+                              ? labels
+                              : {
+                                  title: "应用名称",
+                                  subtitle: "简短描述",
+                                  description: "完整描述",
+                                  video: "宣传视频网址",
+                                },
+                          ).map(([field, label]) => {
                             const key = field as keyof Omit<
                               Draft,
                               "images" | "screenshotGroups"
@@ -426,7 +465,7 @@ export function AppleSyncPanel({
                             <Group justify="space-between" mb="md">
                               <div>
                                 <Text size="sm" fw={550}>
-                                  {appleDeviceLabel(device)}
+                                  {groupLabel(device)}
                                 </Text>
                                 <Text size="xs" c="dimmed">
                                   {shots.length} 张 · {shots[0]?.width} ×{" "}
@@ -472,7 +511,7 @@ export function AppleSyncPanel({
                                       <img
                                         className="generated-image"
                                         src={image.url}
-                                        alt={`${appleDeviceLabel(device)} 商店截图`}
+                                        alt={`${groupLabel(device)} 商店截图`}
                                         loading="lazy"
                                       />
                                     </button>
@@ -495,20 +534,25 @@ export function AppleSyncPanel({
                 </Tabs.Panel>
                 <Tabs.Panel value="app" pt="lg">
                   <Stack>
-                    {Object.entries({
-                      应用名称: snapshot.metadata?.name,
-                      主要语言: snapshot.metadata?.primaryLocale,
-                      SKU: snapshot.metadata?.sku,
-                      版本: snapshot.target.version,
-                      平台: snapshot.target.platform,
-                      版本状态: snapshot.target.versionState,
-                      版权: snapshot.metadata?.copyright,
-                      发布方式: snapshot.metadata?.releaseType,
-                      最早发布日期: snapshot.metadata?.earliestReleaseDate,
-                      主要分类: snapshot.metadata?.primaryCategoryId,
-                      次要分类: snapshot.metadata?.secondaryCategoryId,
-                      年龄分级: snapshot.metadata?.ageRating,
-                    }).map(([label, value]) => (
+                    {Object.entries(
+                      "packageName" in snapshot
+                        ? { 包名: snapshot.packageName }
+                        : {
+                            应用名称: snapshot.metadata?.name,
+                            主要语言: snapshot.metadata?.primaryLocale,
+                            SKU: snapshot.metadata?.sku,
+                            版本: snapshot.target.version,
+                            平台: snapshot.target.platform,
+                            版本状态: snapshot.target.versionState,
+                            版权: snapshot.metadata?.copyright,
+                            发布方式: snapshot.metadata?.releaseType,
+                            最早发布日期:
+                              snapshot.metadata?.earliestReleaseDate,
+                            主要分类: snapshot.metadata?.primaryCategoryId,
+                            次要分类: snapshot.metadata?.secondaryCategoryId,
+                            年龄分级: snapshot.metadata?.ageRating,
+                          },
+                    ).map(([label, value]) => (
                       <Group key={label} justify="space-between" align="start">
                         <Text size="sm" c="dimmed">
                           {label}
@@ -539,7 +583,7 @@ export function AppleSyncPanel({
           <Stack>
             <img className="image-preview" src={preview.url} alt="商店截图" />
             <Text size="xs" c="dimmed">
-              {appleDeviceLabel(preview.deviceType)} · {preview.width} ×{" "}
+              {groupLabel(preview.deviceType)} · {preview.width} ×{" "}
               {preview.height}
             </Text>
             <Group justify="space-between">

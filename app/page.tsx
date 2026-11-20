@@ -38,7 +38,7 @@ import { WorkspaceShell } from "../components/workspace-shell";
 import type { DeviceGroup } from "../lib/screenshot-groups";
 import { availableStoreLocales } from "../lib/store-locales";
 import { ScreenshotList } from "../components/screenshot-list";
-import { AppleSyncPanel } from "../components/apple-sync-panel";
+import { StoreSyncPanel } from "../components/store-sync-panel";
 import { importMissing } from "../lib/apple-sync-model";
 import { useWorkspace } from "../lib/use-workspace";
 import type { Draft, Platform, StoreApp } from "../lib/model";
@@ -461,13 +461,15 @@ export default function Home() {
                   <ArrowRight size={12} style={{ marginLeft: 6 }} />
                 </Button>
               </Group>
-              {platform === "apple" && app.apple && (
-                <AppleSyncPanel
+              {app[platform] && (
+                <StoreSyncPanel
+                  key={app.id + platform}
+                  platform={platform}
                   app={app}
                   locale={locale}
                   onCatalog={setCatalog}
                   onImportLocale={(targetLocale, remoteDraft) => {
-                    const key = `apple:${targetLocale}`;
+                    const key = `${platform}:${targetLocale}`;
                     const result = persist((current) =>
                       current.map((a) =>
                         a.id === app.id
@@ -476,7 +478,12 @@ export default function Home() {
                               drafts: {
                                 ...a.drafts,
                                 [key]: {
+                                  ...a.drafts[key],
                                   ...remoteDraft,
+                                  keywords:
+                                    platform === "google"
+                                      ? (a.drafts[key]?.keywords ?? "")
+                                      : remoteDraft.keywords,
                                   images: a.drafts[key]?.images ?? [],
                                   screenshotGroups:
                                     a.drafts[key]?.screenshotGroups,
@@ -490,13 +497,16 @@ export default function Home() {
                     return result;
                   }}
                   onImportScreenshots={(targetLocale, remoteDraft, shots) => {
-                    const key = `apple:${targetLocale}`;
+                    const key = `${platform}:${targetLocale}`;
                     const device = shots[0]?.deviceType;
                     if (!device) return false;
                     const currentImages =
                       app.drafts[key]?.screenshotGroups?.[device] ?? [];
                     const limit =
-                      catalog?.find((g) => g.value === device)?.limit ?? 10;
+                      platform === "google"
+                        ? 8
+                        : (catalog?.find((g) => g.value === device)?.limit ??
+                          10);
                     const urls = shots.flatMap((image) =>
                       image.url ? [image.url] : [],
                     );
@@ -541,7 +551,14 @@ export default function Home() {
                     persist((current) =>
                       current.map((a) =>
                         a.id === app.id
-                          ? { ...a, drafts: importMissing(a.drafts, snapshot) }
+                          ? {
+                              ...a,
+                              drafts: importMissing(
+                                a.drafts,
+                                snapshot,
+                                platform,
+                              ),
+                            }
                           : a,
                       ),
                     )
@@ -663,6 +680,16 @@ export default function Home() {
                         }
                         placeholder="介绍应用的功能与特色…"
                       />
+                      {platform === "google" && (
+                        <TextInput
+                          label="宣传视频网址"
+                          value={draft.video ?? ""}
+                          disabled={!editable}
+                          onChange={(e) =>
+                            update({ video: e.currentTarget.value })
+                          }
+                        />
+                      )}
                       <TextInput
                         label={platform === "apple" ? "关键词" : "内部备注"}
                         description={
