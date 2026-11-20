@@ -461,7 +461,7 @@ export function StoreSyncPanel({
                             ),
                           );
                         return (
-                          <PaperGroup key={device}>
+                          <section key={device}>
                             <Group justify="space-between" mb="md">
                               <div>
                                 <Text size="sm" fw={550}>
@@ -498,7 +498,11 @@ export function StoreSyncPanel({
                                 {allAdded ? "已加入截图" : "将此组加入本地截图"}
                               </Button>
                             </Group>
-                            <SimpleGrid cols={{ base: 2, sm: 3 }}>
+                            <SimpleGrid
+                              cols={{ base: 2, sm: 3 }}
+                              spacing="sm"
+                              verticalSpacing="sm"
+                            >
                               {shots.map((image) => (
                                 <div key={image.id}>
                                   {image.url ? (
@@ -509,7 +513,9 @@ export function StoreSyncPanel({
                                       onClick={() => setPreview(image)}
                                     >
                                       <img
-                                        className="generated-image"
+                                        className="store-sync-screenshot"
+                                        width={image.width || undefined}
+                                        height={image.height || undefined}
                                         src={image.url}
                                         alt={`${groupLabel(device)} 商店截图`}
                                         loading="lazy"
@@ -523,7 +529,7 @@ export function StoreSyncPanel({
                                 </div>
                               ))}
                             </SimpleGrid>
-                          </PaperGroup>
+                          </section>
                         );
                       })
                     )}
@@ -603,18 +609,5 @@ export function StoreSyncPanel({
         )}
       </Modal>
     </>
-  );
-}
-function PaperGroup({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        border: "1px solid var(--mantine-color-default-border)",
-        borderRadius: 10,
-        padding: 16,
-      }}
-    >
-      {children}
-    </div>
   );
 }
