@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Badge,
@@ -7,6 +7,7 @@ import {
   FileButton,
   Group,
   Modal,
+  TextInput,
   Menu,
   Anchor,
   Paper,
@@ -41,6 +42,8 @@ import {
   setGroupImages,
   screenshotDocs,
   screenDimensions,
+  googleScreenshotDevices,
+  validGoogleDimensions,
   ungrouped,
   type DeviceGroup,
 } from "../lib/screenshot-groups";
@@ -204,8 +207,27 @@ export function ScreenshotList(props: EditorProps) {
   const families = Object.groupBy(groups, category);
   const family = category(group);
   const [pixels, setPixels] = useState<Record<string, string>>({});
+  const [custom, setCustom] = useState<{
+    device: DeviceGroup;
+    width: string;
+    height: string;
+  } | null>(null);
+  const customValid =
+    custom &&
+    /^\d+$/.test(custom.width) &&
+    /^\d+$/.test(custom.height) &&
+    validGoogleDimensions(
+      custom.device.value,
+      Number(custom.width),
+      Number(custom.height),
+    );
   const sizes = families[family]!.flatMap((device) =>
-    screenDimensions(device).map((size) => ({
+    [
+      ...new Set([
+        ...screenDimensions(device),
+        ...(pixels[device.value] ? [pixels[device.value]] : []),
+      ]),
+    ].map((size) => ({
       device,
       size,
       value: device.value + ":" + size,
@@ -269,7 +291,7 @@ export function ScreenshotList(props: EditorProps) {
             groups={groups}
             screenSize={currentSize?.size.replace(" × ", "x")}
             sizeControl={
-              platform === "apple" && sizes.length > 0 ? (
+              sizes.length > 0 ? (
                 <Group gap="xs">
                   <Menu position="bottom-start">
                     <Menu.Target>
@@ -283,24 +305,52 @@ export function ScreenshotList(props: EditorProps) {
                       mah="min(320px, 50dvh)"
                       style={{ overflowY: "auto" }}
                     >
-                      {sizes.map((option) => (
-                        <Menu.Item
-                          key={option.value}
-                          rightSection={
-                            currentSize?.value === option.value ? (
-                              <Check size={14} />
-                            ) : undefined
-                          }
-                          onClick={() => {
-                            selectDevice(option.device);
-                            setPixels((previous) => ({
-                              ...previous,
-                              [option.device.value]: option.size,
-                            }));
-                          }}
-                        >
-                          {option.label}
-                        </Menu.Item>
+                      {families[family]!.map((device) => (
+                        <Fragment key={device.value}>
+                          {families[family]!.length > 1 && (
+                            <Menu.Label>{device.label}</Menu.Label>
+                          )}
+                          {sizes
+                            .filter(
+                              (option) => option.device.value === device.value,
+                            )
+                            .map((option) => (
+                              <Menu.Item
+                                key={option.value}
+                                rightSection={
+                                  currentSize?.value === option.value ? (
+                                    <Check size={14} />
+                                  ) : undefined
+                                }
+                                onClick={() => {
+                                  selectDevice(option.device);
+                                  setPixels((previous) => ({
+                                    ...previous,
+                                    [option.device.value]: option.size,
+                                  }));
+                                }}
+                              >
+                                {option.label}
+                              </Menu.Item>
+                            ))}
+                          {platform === "google" &&
+                            Object.hasOwn(
+                              googleScreenshotDevices,
+                              device.value,
+                            ) && (
+                              <Menu.Item
+                                onClick={() => {
+                                  const [width, height] = (
+                                    pixels[device.value] ??
+                                    screenDimensions(device)[0]
+                                  ).split(" × ");
+                                  setCustom({ device, width, height });
+                                }}
+                              >
+                                自定义分辨率…
+                              </Menu.Item>
+                            )}
+                        </Fragment>
                       ))}
                     </Menu.Dropdown>
                   </Menu>
@@ -311,28 +361,80 @@ export function ScreenshotList(props: EditorProps) {
               ) : undefined
             }
           />
-          {platform === "google" && families[family]!.length > 1 && (
-            <Select
-              label="屏幕规格"
-              size="sm"
-              mt="md"
-              maw={360}
-              value={group.value}
-              allowDeselect={false}
-              data={families[family]!.map((device) => ({
-                value: device.value,
-                label: `${device.label}（${groupImages(draft, device.value).length}）`,
-              }))}
-              onChange={(value) => {
-                const device = families[family]!.find(
-                  (item) => item.value === value,
-                );
-                if (device) selectDevice(device);
-              }}
-            />
-          )}
+          {platform === "google" &&
+            !sizes.length &&
+            families[family]!.length > 1 && (
+              <Select
+                label="屏幕规格"
+                size="sm"
+                mt="md"
+                maw={360}
+                value={group.value}
+                allowDeselect={false}
+                data={families[family]!.map((device) => ({
+                  value: device.value,
+                  label: `${device.label}（${groupImages(draft, device.value).length}）`,
+                }))}
+                onChange={(value) => {
+                  const device = families[family]!.find(
+                    (item) => item.value === value,
+                  );
+                  if (device) selectDevice(device);
+                }}
+              />
+            )}
         </Tabs.Panel>
       </Tabs>
+      <Modal
+        opened={!!custom}
+        onClose={() => setCustom(null)}
+        title={custom?.device.label + " · 自定义分辨率"}
+      >
+        {custom && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!customValid) return;
+              selectDevice(custom.device);
+              setPixels((previous) => ({
+                ...previous,
+                [custom.device.value]:
+                  Number(custom.width) + " × " + Number(custom.height),
+              }));
+              setCustom(null);
+            }}
+          >
+            <Stack>
+              <Group grow>
+                <TextInput
+                  label="宽度（px）"
+                  inputMode="numeric"
+                  value={custom.width}
+                  onChange={(e) =>
+                    setCustom({ ...custom, width: e.currentTarget.value })
+                  }
+                />
+                <TextInput
+                  label="高度（px）"
+                  inputMode="numeric"
+                  value={custom.height}
+                  onChange={(e) =>
+                    setCustom({ ...custom, height: e.currentTarget.value })
+                  }
+                />
+              </Group>
+              <Text size="xs" c="dimmed">
+                每边 320–3840 px，长边最多为短边的 2.3 倍。
+                {custom.device.value !== "phoneScreenshots" &&
+                  "平板也支持每边 1080–7680 px 的 16:9 横图或 9:16 竖图。"}
+              </Text>
+              <Button type="submit" disabled={!customValid}>
+                应用分辨率
+              </Button>
+            </Stack>
+          </form>
+        )}
+      </Modal>
       {historical.length > 0 && (
         <details>
           <summary>整理历史截图</summary>

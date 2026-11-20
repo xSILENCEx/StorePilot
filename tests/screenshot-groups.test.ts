@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { appSchema, type Draft } from "../lib/model";
 import {
   allScreenshots,
+  screenDimensions,
+  validGoogleDimensions,
   groupImages,
   setGroupImages,
   deviceGroups,
@@ -99,4 +101,24 @@ test("Apple reference data selects version screenshot groups and preserves unkno
       ["OLD_PROFILE", 10],
     ],
   );
+});
+
+test("Google screen sizes cover standard and large-screen bounds in both orientations", () => {
+  for (const device of deviceGroups("google", [])) {
+    const sizes = screenDimensions(device);
+    assert.ok(sizes.includes("1080 × 1920"));
+    for (const size of sizes) {
+      const [w, h] = size.split(" × ").map(Number);
+      assert.ok(validGoogleDimensions(device.value, w, h));
+      assert.ok(sizes.includes(h + " × " + w));
+    }
+    assert.ok(validGoogleDimensions(device.value, 320, 736));
+    assert.ok(!validGoogleDimensions(device.value, 320, 737));
+    assert.ok(!validGoogleDimensions(device.value, 319, 600));
+    assert.equal(
+      validGoogleDimensions(device.value, 7680, 4320),
+      device.value !== "phoneScreenshots",
+    );
+    assert.ok(!validGoogleDimensions(device.value, 7680, 4321));
+  }
 });

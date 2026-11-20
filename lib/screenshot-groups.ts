@@ -179,7 +179,57 @@ const appleDimensions: Record<string, string[]> = {
   WATCH_SERIES_4: ["368 × 448"],
   WATCH_SERIES_3: ["312 × 390"],
 };
+// Play Console specifies bounds for standard screenshots and a separate large-screen format.
+export function validGoogleDimensions(
+  device: string,
+  width: number,
+  height: number,
+) {
+  if (
+    !Object.hasOwn(googleScreenshotDevices, device) ||
+    !Number.isInteger(width) ||
+    !Number.isInteger(height)
+  )
+    return false;
+  const short = Math.min(width, height),
+    long = Math.max(width, height);
+  if (short >= 320 && long <= 3840 && long * 10 <= short * 23) return true;
+  return (
+    device !== "phoneScreenshots" &&
+    short >= 1080 &&
+    long <= 7680 &&
+    long * 9 === short * 16
+  );
+}
+
+const googlePhonePresets = [
+  [1080, 1920],
+  [720, 1280],
+  [1080, 2160],
+  [1080, 2400],
+  [1440, 2560],
+  [1440, 3200],
+  [2160, 3840],
+];
+const googleTabletPresets = [
+  [1080, 1920],
+  [800, 1280],
+  [1200, 1920],
+  [1440, 2560],
+  [1600, 2560],
+  [1536, 2048],
+  [2160, 3840],
+  [4320, 7680],
+];
+
 export function screenDimensions(device: DeviceGroup) {
+  if (Object.hasOwn(googleScreenshotDevices, device.value)) {
+    const presets =
+      device.value === "phoneScreenshots"
+        ? googlePhonePresets
+        : googleTabletPresets;
+    return presets.flatMap(([w, h]) => [`${w} × ${h}`, `${h} × ${w}`]);
+  }
   const display = Object.entries(appleDevices).find(
     ([, label]) => label === device.label,
   )?.[0];

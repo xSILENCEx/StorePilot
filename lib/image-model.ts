@@ -1,6 +1,17 @@
-import { screenModelSizes } from "./screenshot-groups";
+import {
+  googleScreenshotDevices,
+  screenModelSizes,
+  validGoogleDimensions,
+} from "./screenshot-groups";
 import { z } from "zod";
 export const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
+const genericSizes = ["auto", "1024x1024", "1024x1536", "1536x1024"];
+function googleModelSize(device: string, size: string) {
+  const match = /^([1-9]\d{2,3})x([1-9]\d{2,3})$/.exec(size);
+  return (
+    !!match && validGoogleDimensions(device, Number(match[1]), Number(match[2]))
+  );
+}
 export const imageSettings = z
   .object({
     prompt: z.string().trim().min(1, "请填写提示词").max(8000),
@@ -9,8 +20,9 @@ export const imageSettings = z
       .string()
       .refine(
         (size) =>
-          ["auto", "1024x1024", "1024x1536", "1536x1024"].includes(size) ||
-          screenModelSizes.has(size),
+          genericSizes.includes(size) ||
+          screenModelSizes.has(size) ||
+          googleModelSize("tenInchScreenshots", size),
         "不支持的生成尺寸",
       )
       .default("auto"),
@@ -40,7 +52,18 @@ export const imageRequest = imageTarget
     settings: imageSettings,
     screenshots: z.array(assetUrl).min(1).max(50).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ platform, deviceGroup, settings }) => {
+    const size = settings.modelSize;
+    if (genericSizes.includes(size)) return true;
+    if (
+      platform === "google" &&
+      deviceGroup &&
+      Object.hasOwn(googleScreenshotDevices, deviceGroup)
+    )
+      return googleModelSize(deviceGroup, size);
+    return screenModelSizes.has(size);
+  }, "当前设备不支持此生成尺寸");
 export type ImageRecord = {
   id: string;
   status: string;
