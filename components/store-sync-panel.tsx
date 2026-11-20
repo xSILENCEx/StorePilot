@@ -270,19 +270,19 @@ export function StoreSyncPanel({
                   </Tabs.Tab>
                   <Tabs.Tab value="app">应用信息</Tabs.Tab>
                 </Tabs.List>
-                <Tabs.Panel value="metadata" pt="lg">
-                  <Stack gap="lg">
-                    <Group justify="space-between">
-                      <Select
-                        aria-label="元数据语言"
-                        value={selectedLocale ?? null}
-                        data={Object.keys(snapshot.locales)}
-                        onChange={(value) =>
-                          value &&
-                          (setActiveLocale(value), setConfirmImport(false))
-                        }
-                        w={180}
-                      />
+                {(tab === "metadata" || tab === "screenshots") && (
+                  <Group justify="space-between" mt="lg">
+                    <Select
+                      aria-label="选择商店资料语言"
+                      value={selectedLocale ?? null}
+                      data={Object.keys(snapshot.locales)}
+                      onChange={(value) =>
+                        value &&
+                        (setActiveLocale(value), setConfirmImport(false))
+                      }
+                      w={180}
+                    />
+                    {tab === "metadata" && (
                       <Button
                         size="xs"
                         variant="light"
@@ -298,7 +298,11 @@ export function StoreSyncPanel({
                       >
                         补充缺少的 {missing} 种语言
                       </Button>
-                    </Group>
+                    )}
+                  </Group>
+                )}
+                <Tabs.Panel value="metadata" pt="lg">
+                  <Stack gap="lg">
                     {entry && (
                       <>
                         <Group justify="space-between">
@@ -422,16 +426,6 @@ export function StoreSyncPanel({
                 </Tabs.Panel>
                 <Tabs.Panel value="screenshots" pt="lg">
                   <Stack gap="lg">
-                    <Select
-                      label="截图语言"
-                      value={selectedLocale ?? null}
-                      data={Object.keys(snapshot.locales)}
-                      onChange={(value) =>
-                        value &&
-                        (setActiveLocale(value), setConfirmImport(false))
-                      }
-                      w={200}
-                    />
                     {!entry?.screenshots?.length ? (
                       <Text size="sm" c="dimmed" ta="center" py="xl">
                         此语言暂无商店截图。
