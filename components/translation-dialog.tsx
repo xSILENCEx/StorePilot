@@ -167,6 +167,7 @@ export function TranslationDialog({
   const filtered = options.filter((code) =>
     label(code).toLowerCase().includes(query.trim().toLowerCase()),
   );
+  const selectedMatches = filtered.filter((code) => targets.includes(code)).length;
   function toggle(ids: string[], checked: boolean) {
     setSelected((prev) =>
       checked
@@ -225,6 +226,20 @@ export function TranslationDialog({
               placeholder="搜索语言名称或代码"
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
+            />
+            <Checkbox
+              label={query.trim() ? "全选搜索结果" : "全选"}
+              disabled={!filtered.length}
+              checked={filtered.length > 0 && selectedMatches === filtered.length}
+              indeterminate={selectedMatches > 0 && selectedMatches < filtered.length}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setTargets((current) =>
+                  checked
+                    ? [...new Set([...current, ...filtered])]
+                    : current.filter((code) => !filtered.includes(code)),
+                );
+              }}
             />
             <Stack gap="sm" mah="48dvh" style={{ overflowY: "auto" }}>
               {filtered.map((code) => (
