@@ -134,3 +134,52 @@ export function appleDeviceLabel(type: string) {
                 : "其他设备")
   );
 }
+
+export type ImportSection = "metadata" | "screenshots" | "graphics";
+export function overwriteStoreDrafts(
+  drafts: Record<string, Draft>,
+  snapshot: { locales: StoreLocales },
+  platform: Platform,
+  section: ImportSection,
+  languages: string[],
+) {
+  const next = { ...drafts };
+  for (const language of languages) {
+    const entry = snapshot.locales[language];
+    if (!entry) continue;
+    const key = platform + ":" + language;
+    const draft: Draft = {
+      ...(drafts[key] ?? {
+        title: "",
+        subtitle: "",
+        description: "",
+        keywords: "",
+        images: [],
+      }),
+    };
+    if (section === "metadata") {
+      for (const field of platform === "apple" ? textFields : googleTextFields)
+        draft[field] = entry.draft[field] ?? "";
+    } else if (section === "screenshots") {
+      const groups: Record<string, string[]> = {};
+      if (
+        !entry.screenshots?.length ||
+        entry.screenshots.some((image) => !image.url)
+      )
+        continue;
+      for (const image of entry.screenshots)
+        (groups[image.deviceType] ??= []).push(image.url!);
+      draft.screenshotGroups = groups;
+      draft.images = [];
+    } else {
+      if (!entry.graphics || platform !== "google") continue;
+      draft.graphics = Object.fromEntries(
+        Object.entries(entry.graphics).flatMap(([type, image]) =>
+          image.url ? [[type, image.url]] : [],
+        ),
+      );
+    }
+    next[key] = draft;
+  }
+  return next;
+}

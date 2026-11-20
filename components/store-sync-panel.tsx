@@ -4,6 +4,7 @@ import {
   Accordion,
   Alert,
   Badge,
+  Checkbox,
   Button,
   Drawer,
   Group,
@@ -17,13 +18,14 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { CloudDownload, Download, ImagePlus } from "lucide-react";
+import { CloudDownload, Download } from "lucide-react";
 import { deviceGroups } from "../lib/screenshot-groups";
 import { graphicTypes, graphicLabels, type GraphicType } from "../lib/model";
 import type { Draft, StoreApp, Platform } from "../lib/model";
 import {
   appleDeviceLabel,
-  importMissing,
+  type ImportSection,
+  type StoreLocales,
   textDiff,
   type AppleScreenshot,
   type AppleSnapshot,
@@ -52,9 +54,6 @@ export function StoreSyncPanel({
   locale,
   enabled,
   onImport,
-  onImportGraphic,
-  onImportScreenshots,
-  onImportLocale,
   onCatalog,
 }: {
   app: StoreApp;
@@ -62,18 +61,10 @@ export function StoreSyncPanel({
   locale: string;
   enabled: boolean;
   onCatalog: (catalog: AppleSnapshot["deviceGroups"]) => void;
-  onImport: (snapshot: AppleSnapshot | GoogleSnapshot) => void;
-  onImportLocale: (locale: string, draft: Draft) => boolean;
-  onImportGraphic: (
-    locale: string,
-    draft: Draft,
-    type: GraphicType,
-    url: string,
-  ) => boolean;
-  onImportScreenshots: (
-    locale: string,
-    draft: Draft,
-    images: AppleScreenshot[],
+  onImport: (
+    snapshot: AppleSnapshot | GoogleSnapshot,
+    section: ImportSection,
+    locales: string[],
   ) => boolean;
 }) {
   const apple = platform === "apple";
@@ -92,7 +83,7 @@ export function StoreSyncPanel({
   const [busy, setBusy] = useState(false);
   const [activeLocale, setActiveLocale] = useState(locale);
   const [tab, setTab] = useState<string | null>("metadata");
-  const [confirmImport, setConfirmImport] = useState(false);
+  const [selection, setSelection] = useState<string[] | null>(null);
   const [preview, setPreview] = useState<AppleScreenshot | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -124,10 +115,41 @@ export function StoreSyncPanel({
   const pending =
     busy || ["queued", "running"].includes(state?.job?.status ?? "");
   const snapshot = state?.snapshot;
-  const missing = snapshot
-    ? Object.keys(importMissing(app.drafts, snapshot, platform)).length -
-      Object.keys(app.drafts).length
-    : 0;
+  const section = tab as ImportSection;
+  const sectionLabel = {
+    metadata: "文案",
+    screenshots: "截图",
+    graphics: "图片资源",
+  }[section];
+  const primary =
+    snapshot &&
+    ("packageName" in snapshot
+      ? snapshot.details?.defaultLanguage
+      : snapshot.metadata?.primaryLocale);
+  const locales: StoreLocales = snapshot?.locales ?? {};
+  const eligible = Object.entries(locales)
+    .filter(([, item]) => {
+      if (section === "screenshots")
+        return (
+          item.screenshots?.length &&
+          item.screenshots.every((image) => image.url) &&
+          Object.entries(
+            Object.groupBy(item.screenshots, (image) => image.deviceType),
+          ).every(
+            ([device, images]) =>
+              (images?.length ?? 0) <=
+              (snapshot && "target" in snapshot
+                ? (snapshot.deviceGroups?.find(
+                    (group) => group.value === device,
+                  )?.limit ?? 10)
+                : 8),
+          )
+        );
+      if (section === "graphics")
+        return Object.values(item.graphics ?? {}).some((image) => image.url);
+      return true;
+    })
+    .map(([language]) => language);
   const selectedLocale = snapshot?.locales[activeLocale]
     ? activeLocale
     : Object.keys(snapshot?.locales ?? {})[0];
@@ -175,7 +197,7 @@ export function StoreSyncPanel({
         商店资料
       </Button>
       <Drawer
-        opened={opened && !preview}
+        opened={opened && !preview && selection === null}
         onClose={() => setOpened(false)}
         position="right"
         title={store + " 商店资料"}
@@ -287,29 +309,24 @@ export function StoreSyncPanel({
                       aria-label="选择商店资料语言"
                       value={selectedLocale ?? null}
                       data={Object.keys(snapshot.locales)}
-                      onChange={(value) =>
-                        value &&
-                        (setActiveLocale(value), setConfirmImport(false))
-                      }
+                      onChange={(value) => value && setActiveLocale(value)}
                       w={180}
                     />
-                    {tab === "metadata" && (
-                      <Button
-                        size="xs"
-                        variant="light"
-                        disabled={
-                          !enabled || pending || state?.stale || !missing
-                        }
-                        onClick={() => {
-                          onImport(snapshot);
-                          notifications.show({
-                            message: `已补充 ${missing} 种语言的元数据。截图可在商店截图页按设备组导入。`,
-                          });
-                        }}
-                      >
-                        补充缺少的 {missing} 种语言
-                      </Button>
-                    )}
+                    <Button
+                      size="xs"
+                      disabled={
+                        !enabled || pending || state?.stale || !eligible.length
+                      }
+                      onClick={() =>
+                        setSelection(
+                          primary && eligible.includes(primary)
+                            ? [primary]
+                            : [],
+                        )
+                      }
+                    >
+                      选择语言并覆盖{sectionLabel}
+                    </Button>
                   </Group>
                 )}
                 <Tabs.Panel value="metadata" pt="lg">
@@ -320,54 +337,7 @@ export function StoreSyncPanel({
                           <Text size="sm" fw={550}>
                             {selectedLocale} 商店元数据
                           </Text>
-                          <Button
-                            size="xs"
-                            variant="light"
-                            disabled={
-                              !enabled ||
-                              pending ||
-                              state?.stale ||
-                              !differences.length
-                            }
-                            onClick={() => setConfirmImport(true)}
-                          >
-                            导入当前语言
-                          </Button>
                         </Group>
-                        {confirmImport && (
-                          <Alert
-                            color="orange"
-                            title="使用商店元数据更新当前语言？"
-                          >
-                            <Text size="sm">
-                              将替换此语言的文案和网址，已有本地截图保留。
-                            </Text>
-                            <Group mt="sm">
-                              <Button
-                                size="xs"
-                                onClick={() => {
-                                  if (
-                                    onImportLocale(selectedLocale, entry.draft)
-                                  ) {
-                                    setConfirmImport(false);
-                                    notifications.show({
-                                      message: `已导入 ${selectedLocale} 的商店元数据，本地截图保留。`,
-                                    });
-                                  }
-                                }}
-                              >
-                                确认导入
-                              </Button>
-                              <Button
-                                size="xs"
-                                variant="default"
-                                onClick={() => setConfirmImport(false)}
-                              >
-                                取消
-                              </Button>
-                            </Group>
-                          </Alert>
-                        )}
                         <Text size="xs" c="dimmed">
                           {!local
                             ? "此语言尚无本地草稿。"
@@ -444,14 +414,6 @@ export function StoreSyncPanel({
                     ) : (
                       Object.entries(groups).map(([device, images]) => {
                         const shots = images ?? [];
-                        const available = shots.filter((image) => image.url);
-                        const allAdded =
-                          available.length > 0 &&
-                          available.every((image) =>
-                            local?.screenshotGroups?.[device]?.includes(
-                              image.url!,
-                            ),
-                          );
                         return (
                           <section key={device}>
                             <Group justify="space-between" mb="md">
@@ -464,31 +426,6 @@ export function StoreSyncPanel({
                                   {shots[0]?.height}
                                 </Text>
                               </div>
-                              <Button
-                                size="xs"
-                                variant="light"
-                                disabled={
-                                  !enabled ||
-                                  pending ||
-                                  state?.stale ||
-                                  !available.length ||
-                                  allAdded
-                                }
-                                onClick={() => {
-                                  if (
-                                    onImportScreenshots(
-                                      selectedLocale,
-                                      entry!.draft,
-                                      available,
-                                    )
-                                  )
-                                    notifications.show({
-                                      message: `已将 ${available.length} 张截图加入 ${selectedLocale} 的本地草稿。`,
-                                    });
-                                }}
-                              >
-                                {allAdded ? "已加入截图" : "将此组加入本地截图"}
-                              </Button>
                             </Group>
                             <SimpleGrid
                               cols={{ base: 2, xs: 3, sm: 4 }}
@@ -526,7 +463,7 @@ export function StoreSyncPanel({
                       })
                     )}
                     <Text size="xs" c="dimmed">
-                      保持商店展示顺序，按语言与设备分组。导入只追加截图，不删除已有图片。
+                      保持商店展示顺序，按语言与设备分组。
                     </Text>
                   </Stack>
                 </Tabs.Panel>
@@ -540,35 +477,6 @@ export function StoreSyncPanel({
                           <Stack key={type} gap="xs">
                             <Group justify="space-between">
                               <Text fw={550}>{graphicLabels[type]}</Text>
-                              {image?.url && entry && (
-                                <Button
-                                  size="xs"
-                                  variant="light"
-                                  disabled={
-                                    !enabled ||
-                                    pending ||
-                                    state?.stale ||
-                                    local?.graphics?.[type] === image.url
-                                  }
-                                  onClick={() => {
-                                    if (
-                                      onImportGraphic(
-                                        selectedLocale,
-                                        entry.draft,
-                                        type,
-                                        image.url!,
-                                      )
-                                    )
-                                      notifications.show({
-                                        message: `已将${graphicLabels[type]}导入 ${selectedLocale} 草稿。`,
-                                      });
-                                  }}
-                                >
-                                  {local?.graphics?.[type] === image.url
-                                    ? "已导入"
-                                    : "导入此资源"}
-                                </Button>
-                              )}
                             </Group>
                             {image?.url ? (
                               <button
@@ -676,6 +584,70 @@ export function StoreSyncPanel({
           )}
         </Stack>
       </Drawer>
+      <Modal
+        opened={opened && selection !== null}
+        onClose={() => setSelection(null)}
+        title={`选择覆盖${sectionLabel}的语言`}
+      >
+        <Stack>
+          <Text size="sm">
+            {section === "screenshots"
+              ? "所选语言的全部本地截图将替换为商店截图，包括未分组截图。仅列出截图已全部下载的语言。"
+              : section === "graphics"
+                ? "所选语言的图片资源将替换为商店图片资源。"
+                : "将覆盖所选语言的商店文案字段，缺少的语言将创建草稿。"}
+          </Text>
+          <Group>
+            <Button variant="subtle" onClick={() => setSelection(eligible)}>
+              全选
+            </Button>
+            <Button variant="subtle" onClick={() => setSelection([])}>
+              全不选
+            </Button>
+          </Group>
+          <Checkbox.Group value={selection ?? []} onChange={setSelection}>
+            <Stack gap="xs">
+              {eligible.map((language) => (
+                <Checkbox
+                  key={language}
+                  value={language}
+                  label={
+                    language === primary ? language + "（商店默认）" : language
+                  }
+                />
+              ))}
+            </Stack>
+          </Checkbox.Group>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setSelection(null)}>
+              取消
+            </Button>
+            <Button
+              disabled={
+                !selection?.length ||
+                !enabled ||
+                pending ||
+                state?.stale ||
+                !selection.every((language) => eligible.includes(language))
+              }
+              onClick={() => {
+                if (
+                  snapshot &&
+                  selection?.length &&
+                  onImport(snapshot, section, selection)
+                ) {
+                  notifications.show({
+                    message: `已更新 ${selection.length} 种语言的${sectionLabel}草稿`,
+                  });
+                  setSelection(null);
+                }
+              }}
+            >
+              确认覆盖（{selection?.length ?? 0}）
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Modal
         opened={opened && !!preview}
         onClose={() => setPreview(null)}

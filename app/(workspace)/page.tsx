@@ -40,7 +40,7 @@ import { availableStoreLocales } from "../../lib/store-locales";
 import { StoreGraphicsEditor } from "../../components/store-graphics-editor";
 import { ScreenshotList } from "../../components/screenshot-list";
 import { StoreSyncPanel } from "../../components/store-sync-panel";
-import { importMissing } from "../../lib/apple-sync-model";
+import { overwriteStoreDrafts } from "../../lib/apple-sync-model";
 import { useWorkspace } from "../../lib/use-workspace";
 import type { Draft, Platform, StoreApp } from "../../lib/model";
 const empty = (): Draft => ({
@@ -497,116 +497,19 @@ export default function Home() {
                   app={app}
                   locale={locale}
                   onCatalog={setCatalog}
-                  onImportGraphic={(targetLocale, remoteDraft, type, url) => {
-                    const key = `google:${targetLocale}`;
-                    const ok = persist((current) =>
-                      current.map((a) => {
-                        if (a.id !== app.id) return a;
-                        const draft = a.drafts[key] ?? remoteDraft;
-                        return {
-                          ...a,
-                          drafts: {
-                            ...a.drafts,
-                            [key]: {
-                              ...draft,
-                              graphics: { ...draft.graphics, [type]: url },
-                            },
-                          },
-                        };
-                      }),
-                    );
-                    if (ok) setLocale(targetLocale);
-                    return ok;
-                  }}
-                  onImportLocale={(targetLocale, remoteDraft) => {
-                    const key = `${platform}:${targetLocale}`;
-                    const result = persist((current) =>
-                      current.map((a) =>
-                        a.id === app.id
-                          ? {
-                              ...a,
-                              drafts: {
-                                ...a.drafts,
-                                [key]: {
-                                  ...a.drafts[key],
-                                  ...remoteDraft,
-                                  keywords:
-                                    platform === "google"
-                                      ? (a.drafts[key]?.keywords ?? "")
-                                      : remoteDraft.keywords,
-                                  images: a.drafts[key]?.images ?? [],
-                                  screenshotGroups:
-                                    a.drafts[key]?.screenshotGroups,
-                                },
-                              },
-                            }
-                          : a,
-                      ),
-                    );
-                    if (result) setLocale(targetLocale);
-                    return result;
-                  }}
-                  onImportScreenshots={(targetLocale, remoteDraft, shots) => {
-                    const key = `${platform}:${targetLocale}`;
-                    const device = shots[0]?.deviceType;
-                    if (!device) return false;
-                    const currentImages =
-                      app.drafts[key]?.screenshotGroups?.[device] ?? [];
-                    const limit =
-                      platform === "google"
-                        ? 8
-                        : (catalog?.find((g) => g.value === device)?.limit ??
-                          10);
-                    const urls = shots.flatMap((image) =>
-                      image.url ? [image.url] : [],
-                    );
-                    if (new Set([...currentImages, ...urls]).size > limit) {
-                      notifications.show({
-                        color: "orange",
-                        message: `导入后超过此设备组的 ${limit} 张上限。`,
-                      });
-                      return false;
-                    }
-                    const result = persist((current) =>
-                      current.map((a) =>
-                        a.id === app.id
-                          ? {
-                              ...a,
-                              drafts: {
-                                ...a.drafts,
-                                [key]: {
-                                  ...(a.drafts[key] ?? remoteDraft),
-                                  screenshotGroups: {
-                                    ...a.drafts[key]?.screenshotGroups,
-                                    [device]: [
-                                      ...new Set([
-                                        ...(a.drafts[key]?.screenshotGroups?.[
-                                          device
-                                        ] ?? []),
-                                        ...urls,
-                                      ]),
-                                    ],
-                                  },
-                                },
-                              },
-                            }
-                          : a,
-                      ),
-                    );
-                    if (result) setLocale(targetLocale);
-                    return result;
-                  }}
                   enabled={saved && !blocked && !!connectionConfigured}
-                  onImport={(snapshot) =>
+                  onImport={(snapshot, section, languages) =>
                     persist((current) =>
                       current.map((a) =>
                         a.id === app.id
                           ? {
                               ...a,
-                              drafts: importMissing(
+                              drafts: overwriteStoreDrafts(
                                 a.drafts,
                                 snapshot,
                                 platform,
+                                section,
+                                languages,
                               ),
                             }
                           : a,
