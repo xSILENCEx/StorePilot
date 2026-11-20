@@ -1,3 +1,4 @@
+import { parseAppleDeviceCatalog } from "./apple-device-catalog";
 import { z } from "zod";
 import { sign } from "node:crypto";
 import { configFields } from "./config-model";
@@ -258,7 +259,17 @@ export async function readAppleSnapshot(
     if (entry.screenshots.some((image) => !image.sourceUrl))
       warnings.push(`${locale} 有尚未处理完成的截图，已保留状态，暂不可下载。`);
   }
+  let deviceGroups;
+  try {
+    const rows = await list(
+      "/v1/appAssetLibraryRefData?fields[appAssetLibraryRefData]=features,placementProfileGroups",
+    );
+    if (rows.length) deviceGroups = parseAppleDeviceCatalog(rows[0].attributes);
+  } catch {
+    warnings.push("设备目录读取失败，本地编辑器可继续使用公开规格分组。");
+  }
   return {
+    deviceGroups,
     metadata: {
       name: stringAttribute(app, "name"),
       primaryLocale: stringAttribute(app, "primaryLocale"),

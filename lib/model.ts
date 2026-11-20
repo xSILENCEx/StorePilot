@@ -1,6 +1,7 @@
 import { z } from "zod";
 export const platformSchema = z.enum(["apple", "google"]);
 export type Platform = z.infer<typeof platformSchema>;
+const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
 export const draftSchema = z.object({
   title: z.string().max(1000),
   subtitle: z.string().max(1000),
@@ -12,7 +13,19 @@ export const draftSchema = z.object({
   marketingUrl: z.string().max(2000).optional(),
   privacyPolicyUrl: z.string().max(2000).optional(),
   privacyChoicesUrl: z.string().max(2000).optional(),
-  images: z.array(z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/)).max(50),
+  images: z.array(assetUrl).max(50),
+  screenshotGroups: z
+    .record(
+      z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{1,150}$/)
+        .refine(
+          (k) =>
+            !["ungrouped", "constructor", "prototype", "__proto__"].includes(k),
+        ),
+      z.array(assetUrl).max(10),
+    )
+    .optional(),
 });
 export type Draft = z.infer<typeof draftSchema>;
 export const appSchema = z
@@ -26,6 +39,17 @@ export const appSchema = z
       draftSchema,
     ),
   })
+  .refine(
+    (a) =>
+      Object.entries(a.drafts).every(
+        ([key, d]) =>
+          !key.startsWith("google:") ||
+          Object.values(d.screenshotGroups ?? {}).every(
+            (images) => images.length <= 8,
+          ),
+      ),
+    "Google Play 每个设备组最多 8 张截图",
+  )
   .refine((a) => a.apple.trim() || a.google.trim(), "至少启用一个平台");
 export type StoreApp = z.infer<typeof appSchema>;
 export const workspaceSchema = z
@@ -43,7 +67,8 @@ export function validateDraft(platform: Platform, draft: Draft) {
       ? { title: 30, subtitle: 30, description: 4000, keywords: 100 }
       : { title: 30, subtitle: 80, description: 4000 };
   return Object.entries(limits).flatMap(([field, limit]) => {
-    const text = draft[field as keyof Omit<Draft, "images">] ?? "";
+    const text =
+      draft[field as keyof Omit<Draft, "images" | "screenshotGroups">] ?? "";
     const length =
       platform === "apple" && field === "keywords"
         ? new TextEncoder().encode(text).length

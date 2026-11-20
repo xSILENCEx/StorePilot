@@ -10,10 +10,8 @@ import {
   Center,
   Group,
   Loader,
-  Menu,
   Modal,
   Paper,
-  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -30,7 +28,6 @@ import {
   Check,
   ChevronDown,
   Download,
-  Globe,
   Layers,
   Plus,
   Search,
@@ -38,6 +35,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { WorkspaceShell } from "../components/workspace-shell";
+import type { DeviceGroup } from "../lib/screenshot-groups";
+import { availableStoreLocales } from "../lib/store-locales";
 import { ScreenshotList } from "../components/screenshot-list";
 import { AppleSyncPanel } from "../components/apple-sync-panel";
 import { importMissing } from "../lib/apple-sync-model";
@@ -56,6 +55,7 @@ export default function Home() {
     useWorkspace(setMessage);
   const [selected, select] = useState<string | null>(null);
   const [platform, setPlatform] = useState<Platform>("apple");
+  const [catalog, setCatalog] = useState<DeviceGroup[]>();
   const [locale, setLocale] = useState("en-US");
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(false);
@@ -64,8 +64,7 @@ export default function Home() {
   const [apple, setApple] = useState("");
   const [google, setGoogle] = useState("");
   const [languageModal, setLanguageModal] = useState(false);
-  const [languageCode, setLanguageCode] = useState("");
-  const [languageError, setLanguageError] = useState("");
+  const [languageSearch, setLanguageSearch] = useState("");
   const [deleteLanguage, setDeleteLanguage] = useState(false);
   const [validating, setValidating] = useState(false);
   const [connection, setConnection] = useState<{
@@ -82,6 +81,12 @@ export default function Home() {
         .filter((key) => key.startsWith(`${platform}:`))
         .map((key) => key.slice(platform.length + 1))
     : [];
+  const candidates = availableStoreLocales(platform, locales);
+  const matchingLanguages = candidates.filter(({ name, code }) =>
+    (name + " " + code)
+      .toLowerCase()
+      .includes(languageSearch.trim().toLowerCase()),
+  );
   const editable = ready && !blocked;
   const connectionConfigured =
     connection?.appId === selected &&
@@ -130,6 +135,7 @@ export default function Home() {
     );
   }
   function openApp(value: StoreApp) {
+    setCatalog(undefined);
     select(value.id);
     const p = value.apple ? "apple" : "google";
     setPlatform(p);
@@ -172,25 +178,21 @@ export default function Home() {
       setModal(false);
     }
   }
-  function addLanguage(e: React.FormEvent) {
-    e.preventDefault();
-    const code = languageCode.trim();
-    if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(code)) {
-      setLanguageError("请输入有效语言代码，例如 zh-Hans 或 en-US");
+  function addLanguage(code: string) {
+    if (!app || !editable || !candidates.some((option) => option.code === code))
       return;
-    }
-    if (!app) return;
     const key = `${platform}:${code}`;
-    if (!app.drafts[key])
-      persist((current) =>
-        current.map((a) =>
-          a.id === app.id
-            ? { ...a, drafts: { ...a.drafts, [key]: empty() } }
-            : a,
-        ),
-      );
-    setLocale(code);
-    setLanguageModal(false);
+    const added = persist((current) =>
+      current.map((a) =>
+        a.id === app.id && !a.drafts[key]
+          ? { ...a, drafts: { ...a.drafts, [key]: empty() } }
+          : a,
+      ),
+    );
+    if (added) {
+      setLocale(code);
+      setLanguageModal(false);
+    }
   }
   function download() {
     const url = URL.createObjectURL(
@@ -319,7 +321,7 @@ export default function Home() {
             ) : !apps.length ? (
               <Paper p={60}>
                 <Stack align="center" gap="md">
-                  <Avatar size={68} radius="xl" color="teal">
+                  <Avatar size={68} radius="xl" color="blue">
                     <Layers size={29} />
                   </Avatar>
                   <Title order={3}>从第一个应用开始</Title>
@@ -346,10 +348,13 @@ export default function Home() {
                     <UnstyledButton onClick={() => openApp(a)} w="100%">
                       <Stack gap="lg">
                         <Group justify="space-between">
-                          <Avatar size={52} radius="lg" color="teal">
+                          <Avatar size={52} radius="lg" color="blue">
                             {a.name.slice(0, 1).toUpperCase()}
                           </Avatar>
-                          <ArrowRight size={18} color="#8e9e95" />
+                          <ArrowRight
+                            size={18}
+                            color="var(--mantine-color-dimmed)"
+                          />
                         </Group>
                         <div>
                           <Title order={3} size="h4">
@@ -394,7 +399,7 @@ export default function Home() {
               </Button>
               <Group justify="space-between">
                 <Group gap="md">
-                  <Avatar size={54} radius="lg" color="teal">
+                  <Avatar size={54} radius="lg" color="blue">
                     {app.name.slice(0, 1).toUpperCase()}
                   </Avatar>
                   <div>
@@ -407,7 +412,7 @@ export default function Home() {
                   </div>
                 </Group>
                 <Group>
-                  <Text size="xs" c={saved ? "teal.7" : "dimmed"}>
+                  <Text size="xs" c={saved ? "green.8" : "dimmed"}>
                     {saved ? "✓ 已保存" : "保存中…"}
                   </Text>
                   <Button
@@ -446,7 +451,7 @@ export default function Home() {
                   href={`/settings?appId=${app.id}`}
                   variant="subtle"
                   size="xs"
-                  color={connectionConfigured ? "teal" : "gray"}
+                  color={connectionConfigured ? "green" : "gray"}
                 >
                   {connectionConfigured
                     ? connection?.verified
@@ -460,6 +465,7 @@ export default function Home() {
                 <AppleSyncPanel
                   app={app}
                   locale={locale}
+                  onCatalog={setCatalog}
                   onImportLocale={(targetLocale, remoteDraft) => {
                     const key = `apple:${targetLocale}`;
                     const result = persist((current) =>
@@ -472,6 +478,8 @@ export default function Home() {
                                 [key]: {
                                   ...remoteDraft,
                                   images: a.drafts[key]?.images ?? [],
+                                  screenshotGroups:
+                                    a.drafts[key]?.screenshotGroups,
                                 },
                               },
                             }
@@ -483,15 +491,19 @@ export default function Home() {
                   }}
                   onImportScreenshots={(targetLocale, remoteDraft, shots) => {
                     const key = `apple:${targetLocale}`;
-                    const currentImages = app.drafts[key]?.images ?? [];
+                    const device = shots[0]?.deviceType;
+                    if (!device) return false;
+                    const currentImages =
+                      app.drafts[key]?.screenshotGroups?.[device] ?? [];
+                    const limit =
+                      catalog?.find((g) => g.value === device)?.limit ?? 10;
                     const urls = shots.flatMap((image) =>
                       image.url ? [image.url] : [],
                     );
-                    if (new Set([...currentImages, ...urls]).size > 50) {
+                    if (new Set([...currentImages, ...urls]).size > limit) {
                       notifications.show({
                         color: "orange",
-                        message:
-                          "导入后超过 50 张截图，请先整理当前语言的截图。",
+                        message: `导入后超过此设备组的 ${limit} 张上限。`,
                       });
                       return false;
                     }
@@ -504,12 +516,17 @@ export default function Home() {
                                 ...a.drafts,
                                 [key]: {
                                   ...(a.drafts[key] ?? remoteDraft),
-                                  images: [
-                                    ...new Set([
-                                      ...(a.drafts[key]?.images ?? []),
-                                      ...urls,
-                                    ]),
-                                  ],
+                                  screenshotGroups: {
+                                    ...a.drafts[key]?.screenshotGroups,
+                                    [device]: [
+                                      ...new Set([
+                                        ...(a.drafts[key]?.screenshotGroups?.[
+                                          device
+                                        ] ?? []),
+                                        ...urls,
+                                      ]),
+                                    ],
+                                  },
                                 },
                               },
                             }
@@ -533,212 +550,222 @@ export default function Home() {
               )}
             </Group>
             {app[platform] ? (
-              <>
-                <Group justify="space-between">
-                  <Group gap="xs">
-                    <Globe size={16} color="#73897c" />
-                    <Select
-                      size="sm"
-                      aria-label="当前语言"
-                      w={160}
-                      value={locales.includes(locale) ? locale : null}
-                      data={locales}
-                      onChange={(value) => value && setLocale(value)}
-                    />
-                    <Menu position="bottom-start">
-                      <Menu.Target>
-                        <ActionIcon
-                          variant="default"
-                          size="lg"
-                          aria-label="管理语言"
-                          disabled={!editable}
-                        >
-                          <Plus size={16} />
-                        </ActionIcon>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item
-                          leftSection={<Plus size={14} />}
-                          onClick={() => {
-                            setLanguageCode("");
-                            setLanguageError("");
-                            setLanguageModal(true);
-                          }}
-                        >
-                          添加语言
-                        </Menu.Item>
-                        <Menu.Item
-                          color="red"
-                          disabled={locales.length < 2}
-                          leftSection={<Trash2 size={14} />}
-                          onClick={() => setDeleteLanguage(true)}
-                        >
-                          删除当前语言
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    {locales.length} 种语言 · 平台独立保存
-                  </Text>
-                </Group>
-                <ScreenshotList
-                  key={`${app.id}:${draftKey}`}
-                  appId={app.id}
-                  platform={platform}
-                  locale={locale}
-                  images={draft.images}
-                  enabled={saved && !blocked}
-                  updateImages={(fn) =>
-                    update((current) => ({ images: fn(current.images) }))
-                  }
-                />
-                <Paper p={{ base: "md", sm: "xl" }}>
-                  <Group justify="space-between" mb="xl">
-                    <div>
-                      <Title order={3} size="h4">
-                        商店文案
-                      </Title>
-                      <Text size="xs" c="dimmed" mt={5}>
-                        让用户用自己的语言了解你的应用。
-                      </Text>
-                    </div>
-                    <Badge variant="light" color="gray">
-                      {locale}
-                    </Badge>
-                  </Group>
-                  <Stack gap="lg">
-                    <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                      <TextInput
-                        label="应用名称"
-                        value={draft.title}
-                        disabled={!editable}
-                        onChange={(e) =>
-                          update({ title: e.currentTarget.value })
-                        }
-                        placeholder="输入应用名称"
-                      />
-                      <TextInput
-                        label={platform === "apple" ? "副标题" : "简短描述"}
-                        value={draft.subtitle}
-                        disabled={!editable}
-                        onChange={(e) =>
-                          update({ subtitle: e.currentTarget.value })
-                        }
-                        placeholder="一句话描述应用的价值"
-                      />
-                    </SimpleGrid>
-                    <Textarea
-                      label="完整描述"
-                      minRows={6}
-                      autosize
-                      maxRows={16}
-                      value={draft.description}
-                      disabled={!editable}
-                      onChange={(e) =>
-                        update({ description: e.currentTarget.value })
-                      }
-                      placeholder="介绍应用的功能与特色…"
-                    />
-                    <TextInput
-                      label={platform === "apple" ? "关键词" : "内部备注"}
-                      description={
-                        platform === "apple"
-                          ? "用英文逗号分隔关键词"
-                          : "仅供内部整理，不上传到 Google Play"
-                      }
-                      value={draft.keywords}
-                      disabled={!editable}
-                      onChange={(e) =>
-                        update({ keywords: e.currentTarget.value })
-                      }
-                    />
-                  </Stack>
-                  {platform === "apple" && (
-                    <Accordion mt="lg" variant="default">
-                      <Accordion.Item value="more">
-                        <Accordion.Control>更多商店元数据</Accordion.Control>
-                        <Accordion.Panel>
-                          <Stack gap="md">
-                            <Textarea
-                              label="推广文本"
-                              value={draft.promotionalText ?? ""}
-                              disabled={!editable}
-                              onChange={(e) =>
-                                update({
-                                  promotionalText: e.currentTarget.value,
-                                })
-                              }
-                              minRows={2}
-                            />
-                            <Textarea
-                              label="版本更新说明"
-                              value={draft.whatsNew ?? ""}
-                              disabled={!editable}
-                              onChange={(e) =>
-                                update({ whatsNew: e.currentTarget.value })
-                              }
-                              minRows={3}
-                            />
-                            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                              {(
-                                [
-                                  "supportUrl",
-                                  "marketingUrl",
-                                  "privacyPolicyUrl",
-                                  "privacyChoicesUrl",
-                                ] as const
-                              ).map((field) => (
-                                <TextInput
-                                  key={field}
-                                  label={
-                                    {
-                                      supportUrl: "支持网址",
-                                      marketingUrl: "营销网址",
-                                      privacyPolicyUrl: "隐私政策网址",
-                                      privacyChoicesUrl: "隐私选择网址",
-                                    }[field]
-                                  }
-                                  value={draft[field] ?? ""}
-                                  disabled={!editable}
-                                  onChange={(e) =>
-                                    update({ [field]: e.currentTarget.value })
-                                  }
-                                />
-                              ))}
-                            </SimpleGrid>
-                          </Stack>
-                        </Accordion.Panel>
-                      </Accordion.Item>
-                    </Accordion>
-                  )}
-                  <Group
-                    justify="space-between"
-                    mt="xl"
-                    pt="lg"
-                    style={{ borderTop: "1px solid #eef1ef" }}
-                  >
-                    <Text size="xs" c="dimmed">
-                      更改自动保存为本地草稿
+              <div className="locale-workspace">
+                <Paper
+                  component="aside"
+                  aria-label="语言管理"
+                  p="sm"
+                  className="locale-rail"
+                >
+                  <Group justify="space-between" mb="xs">
+                    <Text fw={600} size="sm">
+                      语言 · {locales.length}
                     </Text>
-                    <Group>
-                      <Button
-                        variant="default"
-                        disabled={!saved || blocked}
-                        loading={validating}
-                        onClick={() => void validate()}
+                    <Group gap={4}>
+                      <ActionIcon
+                        variant="subtle"
+                        aria-label="添加语言"
+                        title={
+                          candidates.length
+                            ? "添加语言"
+                            : "已添加全部支持的语言"
+                        }
+                        disabled={!editable || !candidates.length}
+                        onClick={() => {
+                          setLanguageSearch("");
+                          setLanguageModal(true);
+                        }}
                       >
-                        校验草稿
-                      </Button>
-                      <Tooltip label="商店推送尚未接入">
-                        <span>
-                          <Button disabled>推送到商店</Button>
-                        </span>
-                      </Tooltip>
+                        <Plus size={16} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        aria-label="删除当前语言"
+                        title="删除当前语言"
+                        disabled={!editable || locales.length < 2}
+                        onClick={() => setDeleteLanguage(true)}
+                      >
+                        <Trash2 size={15} />
+                      </ActionIcon>
                     </Group>
                   </Group>
+                  <div className="locale-list">
+                    {locales.map((code) => (
+                      <Button
+                        key={code}
+                        variant={locale === code ? "light" : "subtle"}
+                        color={locale === code ? "blue" : "gray"}
+                        justify="start"
+                        aria-pressed={locale === code}
+                        onClick={() => setLocale(code)}
+                      >
+                        {code}
+                      </Button>
+                    ))}
+                  </div>
                 </Paper>
-              </>
+                <Stack gap="xl" miw={0}>
+                  <ScreenshotList
+                    key={`${app.id}:${draftKey}`}
+                    appId={app.id}
+                    platform={platform}
+                    locale={locale}
+                    draft={draft}
+                    catalog={catalog}
+                    enabled={saved && !blocked}
+                    updateDraft={update}
+                  />
+                  <Paper p={{ base: "md", sm: "xl" }}>
+                    <Group justify="space-between" mb="xl">
+                      <div>
+                        <Title order={3} size="h4">
+                          商店文案
+                        </Title>
+                        <Text size="xs" c="dimmed" mt={5}>
+                          让用户用自己的语言了解你的应用。
+                        </Text>
+                      </div>
+                      <Badge variant="light" color="gray">
+                        {locale}
+                      </Badge>
+                    </Group>
+                    <Stack gap="lg">
+                      <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                        <TextInput
+                          label="应用名称"
+                          value={draft.title}
+                          disabled={!editable}
+                          onChange={(e) =>
+                            update({ title: e.currentTarget.value })
+                          }
+                          placeholder="输入应用名称"
+                        />
+                        <TextInput
+                          label={platform === "apple" ? "副标题" : "简短描述"}
+                          value={draft.subtitle}
+                          disabled={!editable}
+                          onChange={(e) =>
+                            update({ subtitle: e.currentTarget.value })
+                          }
+                          placeholder="一句话描述应用的价值"
+                        />
+                      </SimpleGrid>
+                      <Textarea
+                        label="完整描述"
+                        minRows={6}
+                        autosize
+                        maxRows={16}
+                        value={draft.description}
+                        disabled={!editable}
+                        onChange={(e) =>
+                          update({ description: e.currentTarget.value })
+                        }
+                        placeholder="介绍应用的功能与特色…"
+                      />
+                      <TextInput
+                        label={platform === "apple" ? "关键词" : "内部备注"}
+                        description={
+                          platform === "apple"
+                            ? "用英文逗号分隔关键词"
+                            : "仅供内部整理，不上传到 Google Play"
+                        }
+                        value={draft.keywords}
+                        disabled={!editable}
+                        onChange={(e) =>
+                          update({ keywords: e.currentTarget.value })
+                        }
+                      />
+                    </Stack>
+                    {platform === "apple" && (
+                      <Accordion mt="lg" variant="default">
+                        <Accordion.Item value="more">
+                          <Accordion.Control>更多商店元数据</Accordion.Control>
+                          <Accordion.Panel>
+                            <Stack gap="md">
+                              <Textarea
+                                label="推广文本"
+                                value={draft.promotionalText ?? ""}
+                                disabled={!editable}
+                                onChange={(e) =>
+                                  update({
+                                    promotionalText: e.currentTarget.value,
+                                  })
+                                }
+                                minRows={2}
+                              />
+                              <Textarea
+                                label="版本更新说明"
+                                value={draft.whatsNew ?? ""}
+                                disabled={!editable}
+                                onChange={(e) =>
+                                  update({ whatsNew: e.currentTarget.value })
+                                }
+                                minRows={3}
+                              />
+                              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                                {(
+                                  [
+                                    "supportUrl",
+                                    "marketingUrl",
+                                    "privacyPolicyUrl",
+                                    "privacyChoicesUrl",
+                                  ] as const
+                                ).map((field) => (
+                                  <TextInput
+                                    key={field}
+                                    label={
+                                      {
+                                        supportUrl: "支持网址",
+                                        marketingUrl: "营销网址",
+                                        privacyPolicyUrl: "隐私政策网址",
+                                        privacyChoicesUrl: "隐私选择网址",
+                                      }[field]
+                                    }
+                                    value={draft[field] ?? ""}
+                                    disabled={!editable}
+                                    onChange={(e) =>
+                                      update({ [field]: e.currentTarget.value })
+                                    }
+                                  />
+                                ))}
+                              </SimpleGrid>
+                            </Stack>
+                          </Accordion.Panel>
+                        </Accordion.Item>
+                      </Accordion>
+                    )}
+                    <Group
+                      justify="space-between"
+                      mt="xl"
+                      pt="lg"
+                      style={{
+                        borderTop:
+                          "1px solid var(--mantine-color-default-border)",
+                      }}
+                    >
+                      <Text size="xs" c="dimmed">
+                        更改自动保存为本地草稿
+                      </Text>
+                      <Group>
+                        <Button
+                          variant="default"
+                          disabled={!saved || blocked}
+                          loading={validating}
+                          onClick={() => void validate()}
+                        >
+                          校验草稿
+                        </Button>
+                        <Tooltip label="商店推送尚未接入">
+                          <span>
+                            <Button disabled>推送到商店</Button>
+                          </span>
+                        </Tooltip>
+                      </Group>
+                    </Group>
+                  </Paper>
+                </Stack>
+              </div>
             ) : (
               <Paper p="xl">
                 <Text c="dimmed">
@@ -803,24 +830,41 @@ export default function Home() {
         title="添加语言"
         size="sm"
       >
-        <form onSubmit={addLanguage}>
-          <Stack>
-            <TextInput
-              data-autofocus
-              label="语言代码"
-              description="例如 zh-Hans、en-US、ja"
-              value={languageCode}
-              error={languageError}
-              onChange={(e) => {
-                setLanguageCode(e.currentTarget.value);
-                setLanguageError("");
-              }}
-            />
-            <Button type="submit" disabled={!editable || !languageCode.trim()}>
-              添加语言
-            </Button>
+        <Stack gap="sm">
+          <TextInput
+            data-autofocus
+            aria-label="搜索语言"
+            placeholder="搜索语言名称或代码"
+            value={languageSearch}
+            onChange={(event) => setLanguageSearch(event.currentTarget.value)}
+            leftSection={<Search size={16} />}
+          />
+          <Stack gap={2} mah="min(55dvh, 420px)" style={{ overflowY: "auto" }}>
+            {matchingLanguages.map(({ name, code }) => (
+              <Button
+                key={code}
+                style={{ flexShrink: 0 }}
+                variant="subtle"
+                color="gray"
+                justify="space-between"
+                rightSection={
+                  <Text component="span" size="xs" c="dimmed">
+                    {code}
+                  </Text>
+                }
+                disabled={!editable}
+                onClick={() => addLanguage(code)}
+              >
+                {name}
+              </Button>
+            ))}
+            {!matchingLanguages.length && (
+              <Text size="sm" c="dimmed">
+                没有可添加的匹配语言
+              </Text>
+            )}
           </Stack>
-        </form>
+        </Stack>
       </Modal>
       <Modal
         opened={deleteLanguage}

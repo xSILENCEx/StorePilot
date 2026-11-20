@@ -22,6 +22,7 @@ test("提示词必填，不接受已删除的模板设置", () => {
 test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不支持的 response_format", async () => {
   const settings = imageSettings.parse({
     prompt: "test",
+    modelSize: "1179x2556",
     quality: "high",
   });
   let calls = 0;
@@ -32,6 +33,7 @@ test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不�
     const body = JSON.parse(init?.body as string);
     assert.equal(body.model, config.model);
     assert.equal(body.n, 1);
+    assert.equal(body.size, "1179x2556");
     assert.equal(body.prompt, settings.prompt);
     assert.equal(body.quality, "high");
     assert.equal(body.response_format, undefined);
@@ -56,10 +58,12 @@ test("Images API 请求使用已配置模型，一次一张，不发送 GPT 不�
 test("参考图按 multipart 发给 edits；自动质量省略而非强塞参数", async () => {
   const settings = imageSettings.parse({
     prompt: "test",
+    modelSize: "2556x1179",
   });
   const fetcher: typeof fetch = async (input, init) => {
     assert.equal(String(input), "https://images.example/v1/images/edits");
     assert.ok(init?.body instanceof FormData);
+    assert.equal(init.body.get("size"), "2556x1179");
     assert.equal(init.body.get("quality"), null);
     assert.ok(init.body.get("image") instanceof Blob);
     assert.equal(

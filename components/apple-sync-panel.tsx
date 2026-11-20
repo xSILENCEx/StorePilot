@@ -51,10 +51,12 @@ export function AppleSyncPanel({
   onImport,
   onImportScreenshots,
   onImportLocale,
+  onCatalog,
 }: {
   app: StoreApp;
   locale: string;
   enabled: boolean;
+  onCatalog: (catalog: AppleSnapshot["deviceGroups"]) => void;
   onImport: (snapshot: AppleSnapshot) => void;
   onImportLocale: (locale: string, draft: Draft) => boolean;
   onImportScreenshots: (
@@ -73,7 +75,6 @@ export function AppleSyncPanel({
   const [confirmImport, setConfirmImport] = useState(false);
   const [preview, setPreview] = useState<AppleScreenshot | null>(null);
   useEffect(() => {
-    if (!opened) return;
     const controller = new AbortController();
     const refresh = async () => {
       try {
@@ -83,19 +84,22 @@ export function AppleSyncPanel({
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error);
-        if (!controller.signal.aborted) setState(data);
+        if (!controller.signal.aborted) {
+          setState(data);
+          onCatalog(data.stale ? undefined : data.snapshot?.deviceGroups);
+        }
       } catch (e) {
         if (!controller.signal.aborted)
           setError(e instanceof Error ? e.message : "读取商店资料失败");
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 3000);
+    const timer = opened ? setInterval(() => void refresh(), 3000) : undefined;
     return () => {
       controller.abort();
       clearInterval(timer);
     };
-  }, [app.id, opened]);
+  }, [app.id, opened, onCatalog]);
   const pending =
     busy || ["queued", "running"].includes(state?.job?.status ?? "");
   const snapshot = state?.snapshot;
@@ -329,7 +333,10 @@ export function AppleSyncPanel({
                         </Text>
                         <Accordion variant="separated">
                           {Object.entries(labels).map(([field, label]) => {
-                            const key = field as keyof Omit<Draft, "images">;
+                            const key = field as keyof Omit<
+                              Draft,
+                              "images" | "screenshotGroups"
+                            >;
                             const remote = entry.draft[key] ?? "";
                             return (
                               <Accordion.Item key={field} value={field}>
@@ -360,7 +367,7 @@ export function AppleSyncPanel({
                                       </p>
                                     </div>
                                     <div>
-                                      <Text size="xs" c="teal.7">
+                                      <Text size="xs" c="blue.7">
                                         最新商店资料
                                       </Text>
                                       <p className="diff-copy">
@@ -410,7 +417,9 @@ export function AppleSyncPanel({
                         const allAdded =
                           available.length > 0 &&
                           available.every((image) =>
-                            local?.images.includes(image.url!),
+                            local?.screenshotGroups?.[device]?.includes(
+                              image.url!,
+                            ),
                           );
                         return (
                           <PaperGroup key={device}>
@@ -554,7 +563,13 @@ export function AppleSyncPanel({
 }
 function PaperGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ border: "1px solid #e5ebe7", borderRadius: 10, padding: 16 }}>
+    <div
+      style={{
+        border: "1px solid var(--mantine-color-default-border)",
+        borderRadius: 10,
+        padding: 16,
+      }}
+    >
       {children}
     </div>
   );

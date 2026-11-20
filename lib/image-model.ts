@@ -1,3 +1,4 @@
+import { screenModelSizes } from "./screenshot-groups";
 import { z } from "zod";
 export const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
 export const imageSettings = z
@@ -5,7 +6,13 @@ export const imageSettings = z
     prompt: z.string().trim().min(1, "请填写提示词").max(8000),
     references: z.array(assetUrl).max(4).default([]),
     modelSize: z
-      .enum(["auto", "1024x1024", "1024x1536", "1536x1024"])
+      .string()
+      .refine(
+        (size) =>
+          ["auto", "1024x1024", "1024x1536", "1536x1024"].includes(size) ||
+          screenModelSizes.has(size),
+        "不支持的生成尺寸",
+      )
       .default("auto"),
     quality: z.enum(["auto", "low", "medium", "high"]).default("auto"),
   })
@@ -16,13 +23,34 @@ export const imageTarget = z.object({
   platform: z.enum(["apple", "google"]),
   locale: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
 });
+const deviceGroup = z.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
+export const imageHistoryQuery = imageTarget
+  .extend({
+    deviceGroup: deviceGroup.optional(),
+    modelSize: imageSettings.shape.modelSize.removeDefault().optional(),
+  })
+  .refine(
+    (query) => Boolean(query.deviceGroup) === Boolean(query.modelSize),
+    "设备分组和分辨率需要一起提供",
+  );
 export const imageRequest = imageTarget
-  .extend({ requestId: z.uuid(), settings: imageSettings })
+  .extend({
+    deviceGroup: deviceGroup.optional(),
+    requestId: z.uuid(),
+    settings: imageSettings,
+    screenshots: z.array(assetUrl).min(1).max(50).optional(),
+  })
   .strict();
 export type ImageRecord = {
   id: string;
   status: string;
-  input: { locale: string; settings: ImageSettings };
+  input: {
+    locale: string;
+    deviceGroup?: string;
+    settings: ImageSettings;
+    screenshots?: string[];
+    screenshotIndex?: number;
+  };
   result: {
     url?: string;
     width?: number;

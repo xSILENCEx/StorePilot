@@ -18,8 +18,12 @@ export async function generateImageTask(job: Job) {
   let sent = false;
   let received = false;
   try {
-    const { configRevision: _revision, ...request } = job.input;
-    const { settings } = imageRequest.parse(request);
+    const {
+      configRevision: _revision,
+      screenshotIndex,
+      ...request
+    } = job.input;
+    const { settings, screenshots } = imageRequest.parse(request);
     let reply = await savedReply(job.id);
     if (!reply) {
       const config = await workerConfig("image");
@@ -27,7 +31,10 @@ export async function generateImageTask(job: Job) {
         throw new ImageGenerationError("图像模型配置已变更，请重新生成");
       const fields = configFields.image.parse(config.fields);
       const references = [];
-      for (const url of settings.references) {
+      const screenshot = screenshots?.[Number(screenshotIndex)];
+      for (const url of screenshot
+        ? [screenshot, ...settings.references]
+        : settings.references) {
         const id = url.split("/").at(-1)!;
         const asset = db().select().from(assets).where(eq(assets.id, id)).get();
         if (!asset) throw new ImageGenerationError("参考图片不存在");

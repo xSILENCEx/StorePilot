@@ -312,6 +312,74 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         assert.equal(modelCalls, 2);
       },
     );
+    await t.test("多选截图逐张生成，素材共享，重复提交不增加任务", async () => {
+      const second = await sharp(bytes).resize(40, 60).png().toBuffer();
+      const material = await sharp(bytes).resize(20, 30).png().toBuffer();
+      const input = {
+        ...target,
+        requestId: randomUUID(),
+        deviceGroup: "IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY",
+        screenshots: [reference.url, (await storeAsset(second)).url],
+        settings: {
+          prompt: "batch",
+          modelSize: "1179x2556",
+          references: [(await storeAsset(material)).url],
+        },
+      };
+      for (let attempt = 0; attempt < 2; attempt++)
+        assert.equal(
+          (await generate(request("/api/images", "POST", input))).status,
+          202,
+        );
+      const owner = randomUUID();
+      assert.ok(acquireWorker(owner));
+      const seen = new Set();
+      try {
+        for (let i = 0; i < 2; i++) {
+          const job = claimJob(owner)!;
+          const index = Number(job.input.screenshotIndex);
+          seen.add(index);
+          globalThis.fetch = async (_url, init) => {
+            assert.ok(init?.body instanceof FormData);
+            const files = init.body.getAll("image[]") as File[];
+            assert.equal(files.length, 2);
+            assert.deepEqual(
+              Buffer.from(await files[0].arrayBuffer()),
+              [bytes, second][index],
+            );
+            assert.deepEqual(
+              Buffer.from(await files[1].arrayBuffer()),
+              material,
+            );
+            return Response.json({
+              data: [{ b64_json: bytes.toString("base64") }],
+            });
+          };
+          await executeJob(job);
+          assert.equal(
+            db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
+            "succeeded",
+          );
+        }
+        for (const [deviceGroup, modelSize, count] of [
+          [input.deviceGroup, input.settings.modelSize, 2],
+          [input.deviceGroup, "2556x1179", 0],
+          ["IPHONE_DUO", input.settings.modelSize, 0],
+        ] as const) {
+          const response = await getImages(
+            request(
+              "/api/images?" +
+                new URLSearchParams({ ...target, deviceGroup, modelSize }),
+            ),
+          );
+          assert.equal((await response.json()).images.length, count);
+        }
+        assert.deepEqual(seen, new Set([0, 1]));
+        assert.equal(claimJob(owner), undefined);
+      } finally {
+        releaseWorker(owner);
+      }
+    });
     await t.test(
       "网络结果未知不会重发；有响应可重启恢复，无响应保持未知",
       async () => {

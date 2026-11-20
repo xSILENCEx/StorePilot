@@ -104,7 +104,7 @@ export function TaskDrawer({
                       j.status === "failed" || j.status === "uncertain"
                         ? "orange"
                         : j.status === "succeeded"
-                          ? "teal"
+                          ? "green"
                           : "blue"
                     }
                     variant="light"

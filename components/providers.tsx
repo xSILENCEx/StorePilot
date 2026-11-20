@@ -12,23 +12,23 @@ import {
 } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 const theme = createTheme({
-  primaryColor: "teal",
+  primaryColor: "blue",
   defaultRadius: "md",
   fontFamily:
     'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif',
   headings: { fontFamily: "inherit", fontWeight: "650" },
   colors: {
-    teal: [
-      "#effaf5",
-      "#d9f1e5",
-      "#b1e0ca",
-      "#85cfad",
-      "#60bd95",
-      "#43ad81",
-      "#218260",
-      "#196c50",
-      "#145740",
-      "#104734",
+    blue: [
+      "#edf5ff",
+      "#d9ebff",
+      "#b7d9ff",
+      "#8bc1ff",
+      "#59a5fa",
+      "#2587ed",
+      "#0066cc",
+      "#005bb5",
+      "#004c99",
+      "#003e80",
     ],
   },
   components: {

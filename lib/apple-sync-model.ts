@@ -1,3 +1,4 @@
+import type { DeviceGroup } from "./screenshot-groups";
 import type { Draft } from "./model";
 export const textFields = [
   "title",
@@ -23,6 +24,7 @@ export type AppleScreenshot = {
   url: string | null;
 };
 export type AppleSnapshot = {
+  deviceGroups?: DeviceGroup[];
   metadata: {
     name: string;
     primaryLocale: string;

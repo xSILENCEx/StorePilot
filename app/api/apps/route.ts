@@ -1,3 +1,4 @@
+import { allScreenshots } from "../../../lib/screenshot-groups";
 import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../../../lib/db";
 import { workspaces, assets } from "../../../lib/schema";
@@ -29,7 +30,7 @@ export async function PUT(request: Request) {
       ...new Set(
         value.apps.flatMap((a) =>
           Object.values(a.drafts).flatMap((d) =>
-            d.images.map((url) => url.split("/").at(-1)),
+            allScreenshots(d).map((url) => url.split("/").at(-1)),
           ),
         ),
       ),

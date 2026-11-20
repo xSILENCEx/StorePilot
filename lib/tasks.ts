@@ -1,3 +1,4 @@
+import { allScreenshots } from "./screenshot-groups";
 import sharp from "sharp";
 import { appSchema, validateDraft, platformSchema } from "./model";
 import { assetPath } from "./storage";
@@ -27,7 +28,7 @@ export async function executeJob(job: Job) {
               (error) => `${key}: ${error}`,
             ),
           );
-          for (const url of draft.images) {
+          for (const url of allScreenshots(draft)) {
             const meta = await sharp(
               assetPath(url.split("/").at(-1)!),
             ).metadata();

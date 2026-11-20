@@ -44,6 +44,9 @@ export function ImageGenerator({
   platform,
   locale,
   sourceImages,
+  screenSize,
+  deviceGroup,
+  deviceLabel,
   enabled,
   onAdd,
 }: {
@@ -51,6 +54,9 @@ export function ImageGenerator({
   platform: Platform;
   locale: string;
   sourceImages: string[];
+  screenSize?: string;
+  deviceGroup: string;
+  deviceLabel: string;
   enabled: boolean;
   onAdd: (url: string) => void;
 }) {
@@ -62,29 +68,41 @@ export function ImageGenerator({
     modelSize: "auto",
     quality: "auto",
   });
-  const [images, setImages] = useState<ImageRecord[]>([]);
+  const modelSize = screenSize ?? settings.modelSize;
+  const [records, setImages] = useState<ImageRecord[]>([]);
+  const images = records.filter(
+    (record) =>
+      record.input.deviceGroup === deviceGroup &&
+      record.input.settings.modelSize === modelSize,
+  );
   const [preview, setPreview] = useState<ImageRecord | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [uploaded, setUploaded] = useState<string[]>([]);
-  const pending = useRef<{ requestId: string; settings: ImageSettings } | null>(
-    null,
-  );
+  const [screenshots, setScreenshots] = useState<string[]>([]);
+  const [uploaded, setUploaded] = useState({
+    screenshots: [] as string[],
+    materials: [] as string[],
+  });
+  const pending = useRef<{
+    requestId: string;
+    settings: ImageSettings;
+    screenshots: string[];
+  } | null>(null);
   const sending = useRef(false);
   const [retryPending, setRetryPending] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       const response = await fetch(
-        `/api/images?${new URLSearchParams({ appId, platform, locale })}`,
+        `/api/images?${new URLSearchParams({ appId, platform, locale, deviceGroup, modelSize })}`,
         { cache: "no-store", signal },
       );
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setImages(data.images);
     },
-    [appId, platform, locale],
+    [appId, platform, locale, deviceGroup, modelSize],
   );
   useEffect(() => {
     if (!opened) return;
@@ -108,19 +126,30 @@ export function ImageGenerator({
     };
   }, [opened, refresh]);
   async function generate() {
-    if (sending.current || !settings.prompt.trim()) return;
+    if (sending.current || !screenshots.length || !settings.prompt.trim())
+      return;
     sending.current = true;
     setBusy(true);
     setMessage("");
     pending.current ??= {
       requestId: crypto.randomUUID(),
-      settings: structuredClone(settings),
+      settings: structuredClone({
+        ...settings,
+        modelSize,
+      }),
+      screenshots: [...screenshots],
     };
     try {
       const response = await fetch("/api/images", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appId, platform, locale, ...pending.current }),
+        body: JSON.stringify({
+          appId,
+          platform,
+          locale,
+          deviceGroup,
+          ...pending.current,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -144,27 +173,40 @@ export function ImageGenerator({
       setBusy(false);
     }
   }
-  async function upload(file: File | null) {
-    if (!file) return;
+  async function upload(files: File[], area: "screenshots" | "materials") {
+    if (!files.length) return;
     setBusy(true);
     setMessage("");
+    const selected = area === "screenshots" ? screenshots : settings.references;
+    const limit = area === "screenshots" ? 50 : 4;
     try {
-      if (settings.references.length >= 4)
-        throw new Error("最多选择四张参考图");
-      if (file.size > 20 * 1024 * 1024) throw new Error("参考图不能超过 20 MB");
-      const form = new FormData();
-      form.set("file", file);
-      const response = await fetch("/api/assets", {
-        method: "POST",
-        body: form,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      setUploaded((current) => [...new Set([...current, data.url])]);
-      setSettings((current) => ({
-        ...current,
-        references: [...new Set([...current.references, data.url])].slice(0, 4),
-      }));
+      if (selected.length + files.length > limit)
+        throw new Error(`该区域最多可选择 ${limit} 张图片`);
+      for (const file of files) {
+        if (file.size > 20 * 1024 * 1024)
+          throw new Error(`${file.name} 超过 20 MB`);
+        const form = new FormData();
+        form.set("file", file);
+        const response = await fetch("/api/assets", {
+          method: "POST",
+          body: form,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        const append = (urls: string[]) => [
+          ...new Set([...urls, data.url as string]),
+        ];
+        setUploaded((current) => ({
+          ...current,
+          [area]: append(current[area]),
+        }));
+        if (area === "screenshots") setScreenshots(append);
+        else
+          setSettings((current) => ({
+            ...current,
+            references: append(current.references),
+          }));
+      }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "上传失败");
     } finally {
@@ -194,7 +236,7 @@ export function ImageGenerator({
       icon: <Check size={16} />,
     });
   }
-  const references = [...new Set([...sourceImages, ...uploaded])];
+
   const disabled = !enabled || busy || retryPending;
   const activeCount = images.filter((image) =>
     ["queued", "running"].includes(image.status),
@@ -227,7 +269,11 @@ export function ImageGenerator({
             <div>
               <Text fw={650}>AI 生成截图</Text>
               <Text size="xs" c="dimmed">
-                {platform === "apple" ? "App Store" : "Google Play"} · {locale}
+                {platform === "apple" ? "App Store" : "Google Play"} · {locale}{" "}
+                · {deviceLabel} ·{" "}
+                {modelSize === "auto"
+                  ? "自动分辨率"
+                  : modelSize.replace("x", " × ") + " px"}
               </Text>
             </div>
           </Group>
@@ -275,83 +321,89 @@ export function ImageGenerator({
                   setSettings({ ...settings, prompt: e.currentTarget.value })
                 }
               />
-              <div>
-                <Group justify="space-between" mb="sm">
-                  <div>
-                    <Text size="sm" fw={550}>
-                      参考图{" "}
-                      <Text component="span" c="dimmed" fw={400}>
-                        （可选）
-                      </Text>
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      已选择 {settings.references.length} / 4 张
-                    </Text>
-                  </div>
-                  <FileButton
-                    onChange={(file) => void upload(file)}
-                    accept="image/png,image/jpeg"
-                  >
-                    {(props) => (
-                      <Button
-                        {...props}
-                        size="xs"
-                        variant="default"
-                        leftSection={<ImagePlus size={14} />}
-                        disabled={disabled || settings.references.length >= 4}
+              {(["screenshots", "materials"] as const).map((area) => {
+                const isScreenshot = area === "screenshots";
+                const label = isScreenshot ? "截图" : "素材";
+                const selected = isScreenshot
+                  ? screenshots
+                  : settings.references;
+                const limit = isScreenshot ? 50 : 4;
+                const choices = [
+                  ...new Set([
+                    ...(isScreenshot ? sourceImages : []),
+                    ...uploaded[area],
+                    ...selected,
+                  ]),
+                ];
+                return (
+                  <Paper key={area} p="md" withBorder>
+                    <Group justify="space-between" mb="sm">
+                      <div>
+                        <Text fw={550}>
+                          {label} · {selected.length} / {limit}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {isScreenshot
+                            ? "每张选中的截图生成一张结果。"
+                            : "可选。选中的素材用于每张截图的生成。"}
+                        </Text>
+                      </div>
+                      <FileButton
+                        multiple
+                        accept="image/png,image/jpeg"
+                        onChange={(files) => void upload(files, area)}
                       >
-                        上传参考图
-                      </Button>
-                    )}
-                  </FileButton>
-                </Group>
-                {references.length ? (
-                  <Group gap="sm">
-                    {references.map((url, i) => {
-                      const selected = settings.references.includes(url);
-                      return (
-                        <button
-                          type="button"
-                          className="reference-choice"
-                          data-selected={selected}
-                          aria-pressed={selected}
-                          aria-label={`参考图 ${i + 1}`}
-                          disabled={
-                            disabled ||
-                            (!selected && settings.references.length >= 4)
-                          }
-                          key={url}
-                          onClick={() =>
-                            setSettings({
-                              ...settings,
-                              references: selected
-                                ? settings.references.filter(
-                                    (item) => item !== url,
-                                  )
-                                : [...settings.references, url],
-                            })
-                          }
-                        >
-                          <img src={url} alt={`参考图 ${i + 1}`} />
-                          <Text
+                        {(props) => (
+                          <Button
+                            {...props}
                             size="xs"
-                            c={selected ? "teal.7" : "dimmed"}
-                            mt={6}
+                            variant="default"
+                            disabled={disabled || selected.length >= limit}
+                            leftSection={<ImagePlus size={14} />}
                           >
-                            {selected ? "已选择" : "选择"}
-                          </Text>
-                        </button>
-                      );
-                    })}
-                  </Group>
-                ) : (
-                  <Paper p="lg" bg="gray.0" withBorder={false}>
-                    <Text size="sm" c="dimmed" ta="center">
-                      直接用提示词生成，或上传 App 界面作为参考。
-                    </Text>
+                            上传{label}
+                          </Button>
+                        )}
+                      </FileButton>
+                    </Group>
+                    <Group gap="sm">
+                      {choices.map((url, i) => {
+                        const position = selected.indexOf(url);
+                        return (
+                          <button
+                            type="button"
+                            key={url}
+                            className="reference-choice"
+                            data-selected={position >= 0}
+                            aria-pressed={position >= 0}
+                            aria-label={`${label} ${i + 1}`}
+                            disabled={
+                              disabled ||
+                              (position < 0 && selected.length >= limit)
+                            }
+                            onClick={() => {
+                              const next =
+                                position >= 0
+                                  ? selected.filter((item) => item !== url)
+                                  : [...selected, url];
+                              if (isScreenshot) setScreenshots(next);
+                              else
+                                setSettings({ ...settings, references: next });
+                            }}
+                          >
+                            <img src={url} alt={`${label} ${i + 1}`} />
+                            <Text size="xs">
+                              {position >= 0
+                                ? `已选 · ${position + 1}`
+                                : "选择"}
+                            </Text>
+                          </button>
+                        );
+                      })}
+                    </Group>
                   </Paper>
-                )}
-              </div>
+                );
+              })}
               <Accordion variant="default">
                 <Accordion.Item value="options">
                   <Accordion.Control>高级选项</Accordion.Control>
@@ -359,8 +411,12 @@ export function ImageGenerator({
                     <SimpleGrid cols={{ base: 1, xs: 2 }}>
                       <NativeSelect
                         label="生成尺寸"
-                        value={settings.modelSize}
-                        disabled={disabled}
+                        value={
+                          pending.current?.settings.modelSize ??
+                          screenSize ??
+                          settings.modelSize
+                        }
+                        disabled={disabled || !!screenSize}
                         onChange={(e) =>
                           setSettings({
                             ...settings,
@@ -368,12 +424,19 @@ export function ImageGenerator({
                               .value as ImageSettings["modelSize"],
                           })
                         }
-                        data={[
-                          { value: "auto", label: "模型自动选择" },
-                          "1024x1024",
-                          "1024x1536",
-                          "1536x1024",
-                        ]}
+                        data={
+                          screenSize
+                            ? [
+                                pending.current?.settings.modelSize ??
+                                  screenSize,
+                              ]
+                            : [
+                                { value: "auto", label: "模型自动选择" },
+                                "1024x1024",
+                                "1024x1536",
+                                "1536x1024",
+                              ]
+                        }
                       />
                       <NativeSelect
                         label="生成质量"
@@ -399,17 +462,21 @@ export function ImageGenerator({
               </Accordion>
               <Group justify="space-between" className="modal-footer">
                 <Text size="xs" c="dimmed" maw={330}>
-                  使用已配置的图像模型。参考图会发送给该服务。
+                  每次调用发送一张截图和所选素材。
                   <br />
                   提交后可关闭弹窗，任务继续运行。
                 </Text>
                 <Button
                   leftSection={<Sparkles size={15} />}
                   loading={busy}
-                  disabled={!enabled || !settings.prompt.trim()}
+                  disabled={
+                    !enabled || !screenshots.length || !settings.prompt.trim()
+                  }
                   onClick={() => void generate()}
                 >
-                  {retryPending ? "重试同一请求" : "生成一张图片"}
+                  {retryPending
+                    ? "重试同一请求"
+                    : `生成 ${screenshots.length} 张图片`}
                 </Button>
               </Group>
             </Stack>
@@ -426,7 +493,7 @@ export function ImageGenerator({
                   leftSection={<Sparkles size={14} />}
                   onClick={() => setTab("create")}
                 >
-                  再生成一张
+                  再次生成
                 </Button>
               </Group>
               {loading && !images.length ? (
@@ -475,7 +542,10 @@ export function ImageGenerator({
                             {["queued", "running"].includes(image.status) ? (
                               <Loader size="sm" />
                             ) : (
-                              <ImagePlus size={24} color="#8b9d93" />
+                              <ImagePlus
+                                size={24}
+                                color="var(--mantine-color-dimmed)"
+                              />
                             )}
                             <Text size="sm" c="dimmed">
                               {statuses[image.status]}
@@ -489,7 +559,7 @@ export function ImageGenerator({
                               image.status === "failed" ||
                               image.status === "uncertain"
                                 ? "orange"
-                                : "teal"
+                                : "green"
                             }
                             size="sm"
                           >
@@ -507,6 +577,12 @@ export function ImageGenerator({
                             </ActionIcon>
                           )}
                         </Group>
+                        {image.input.screenshotIndex != null && (
+                          <Text size="sm">
+                            截图 {image.input.screenshotIndex + 1} /{" "}
+                            {image.input.screenshots?.length}
+                          </Text>
+                        )}
                         <Text size="xs" c="dimmed" lineClamp={2}>
                           {image.input.settings.prompt}
                         </Text>

@@ -433,7 +433,7 @@ function ConfigForm({
           <Alert
             color={
               verification.status === "passed"
-                ? "teal"
+                ? "green"
                 : verification.status === "failed" ||
                     verification.status === "uncertain"
                   ? "orange"
@@ -608,7 +608,7 @@ function ConnectionCard({ scope, app }: { scope: ConfigScope; app?: App }) {
           <Group justify="space-between">
             <ThemeIcon
               variant="light"
-              color={isModel ? "teal" : "gray"}
+              color={isModel ? "blue" : "gray"}
               size={42}
               radius="md"
             >
@@ -619,7 +619,7 @@ function ConnectionCard({ scope, app }: { scope: ConfigScope; app?: App }) {
                 !state?.configured
                   ? "gray"
                   : status === "passed"
-                    ? "teal"
+                    ? "green"
                     : status === "failed" || status === "uncertain"
                       ? "orange"
                       : "blue"

@@ -1,9 +1,16 @@
 :root {
   color-scheme: light;
+  scrollbar-gutter: stable;
+}
+@supports (scrollbar-gutter: stable) {
+  /* The root already reserves the gap that the drawer's scroll lock measures. */
+  :root body[data-scroll-locked] {
+    margin-right: 0 !important;
+  }
 }
 body {
-  background: #f6f8f7;
-  color: #223c33;
+  background: #f5f5f7;
+  color: #1d1d1f;
 }
 a {
   text-decoration: none;
@@ -15,7 +22,7 @@ a {
   display: inline-block;
   width: 6px;
   height: 6px;
-  background: #218260;
+  background: var(--mantine-color-green-7);
   border-radius: 50%;
   margin-right: 4px;
 }
@@ -29,7 +36,7 @@ a {
   letter-spacing: 0.13em;
   font-size: 10px;
   font-weight: 700;
-  color: #7e9188;
+  color: #626269;
 }
 .app-card {
   transition:
@@ -38,12 +45,13 @@ a {
   background: white;
 }
 .app-card:hover {
-  border-color: #87bca5;
+  border-color: var(--mantine-color-blue-3);
   transform: translateY(-2px);
 }
 .screenshot-strip {
+  --screenshot-gap: 16px;
   display: flex;
-  gap: 16px;
+  gap: var(--screenshot-gap);
   overflow-x: auto;
   padding: 4px 2px 12px;
 }
@@ -51,19 +59,16 @@ a {
   flex: 0 0 148px;
 }
 .screenshot-image {
-  background: #f1f5f3;
-  border-radius: 8px;
   width: 100%;
-  height: 218px;
-  object-fit: contain;
+  height: auto;
   display: block;
 }
 .upload-placeholder {
   flex: 0 0 148px;
   min-height: 218px;
-  border: 1px dashed #b7cec1;
+  border: 1px dashed #b7bac1;
   border-radius: 10px;
-  background: #f8fbf9;
+  background: #fafafc;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,12 +77,12 @@ a {
   border: 2px solid transparent;
   border-radius: 10px;
   padding: 8px;
-  background: #f5f7f6;
+  background: #f5f5f7;
   cursor: pointer;
 }
 .reference-choice[data-selected="true"] {
-  border-color: #218260;
-  background: #effaf5;
+  border-color: var(--mantine-color-blue-6);
+  background: var(--mantine-color-blue-0);
 }
 .reference-choice:disabled {
   opacity: 0.45;
@@ -93,7 +98,7 @@ a {
   width: 100%;
   height: 200px;
   object-fit: contain;
-  background: #f3f6f4;
+  background: #f5f5f7;
   border-radius: 8px;
   display: block;
 }
@@ -102,11 +107,11 @@ a {
   max-height: 64vh;
   object-fit: contain;
   display: block;
-  background: #f5f7f6;
+  background: #f5f5f7;
   border-radius: 10px;
 }
 .modal-footer {
-  border-top: 1px solid #e9eeeb;
+  border-top: 1px solid #dedee3;
   padding-top: 18px;
   margin-top: 24px;
 }
@@ -116,7 +121,7 @@ a {
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(ellipse at 15% 15%, #dfefe6, transparent 55%), #f6f8f7;
+    radial-gradient(ellipse at 15% 15%, #e5effa, transparent 55%), #f5f5f7;
 }
 .diff-copy {
   white-space: pre-wrap;
@@ -138,4 +143,120 @@ a {
   padding: 0;
   width: 100%;
   cursor: zoom-in;
+}
+
+.screenshot-thumbnail {
+  position: relative;
+}
+.screenshot-thumbnail .preview-button {
+  display: block;
+}
+.screenshot-sort-item {
+  transition: transform 190ms cubic-bezier(.2, .75, .25, 1), opacity 120ms ease;
+}
+.screenshot-sort-item[data-dragging="true"] {
+  opacity: .22;
+}
+@media (prefers-reduced-motion: reduce) {
+  .screenshot-sort-item { transition: none; }
+}
+.screenshot-thumbnail .screenshot-remove {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  opacity: 0;
+  pointer-events: none;
+}
+.screenshot-thumbnail:hover .screenshot-remove,
+.screenshot-thumbnail:focus-within .screenshot-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .screenshot-thumbnail .screenshot-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+.screenshot-viewport {
+  height: min(65dvh, 720px);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.screenshot-viewport:active {
+  cursor: grabbing;
+}
+.screenshot-viewport img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+@media (min-width: 48em) {
+  .workspace-nav {
+    overflow: hidden;
+    white-space: nowrap;
+    transition-property: width, transform;
+  }
+  .workspace-nav:is(:hover, :has(:focus-visible)) {
+    width: 230px;
+  }
+  .workspace-nav:not(:hover):not(:has(:focus-visible))
+    :is(.workspace-nav-caption, .mantine-NavLink-body, .mantine-Button-label) {
+    opacity: 0;
+  }
+  .workspace-nav .mantine-Button-inner {
+    overflow: visible;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-nav {
+    transition-duration: 0s;
+  }
+}
+
+.locale-workspace {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--mantine-spacing-lg);
+}
+.locale-rail {
+  position: sticky;
+  top: calc(var(--app-shell-header-offset) + var(--mantine-spacing-md));
+}
+.locale-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: calc(100dvh - var(--app-shell-header-offset) - 7rem);
+  overflow-y: auto;
+}
+.locale-list button {
+  flex-shrink: 0;
+}
+@media (max-width: 48em) {
+  .locale-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .locale-rail {
+    position: static;
+  }
+  .locale-list {
+    flex-flow: row wrap;
+    max-height: 12rem;
+  }
+}
+
+.screenshot-device-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.screenshot-device-tabs [role="tab"] {
+  flex-shrink: 0;
+  text-align: start;
 }

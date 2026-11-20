@@ -34,7 +34,7 @@ export function WorkspaceShell({
   return (
     <AppShell
       header={{ height: 70 }}
-      navbar={{ width: 230, breakpoint: "sm", collapsed: { mobile: !opened } }}
+      navbar={{ width: 64, breakpoint: "sm", collapsed: { mobile: !opened } }}
       padding={0}
     >
       <AppShell.Header>
@@ -71,11 +71,8 @@ export function WorkspaceShell({
           </Badge>
         </Group>
       </AppShell.Header>
-      <AppShell.Navbar p="md">
+      <AppShell.Navbar className="workspace-nav" py="md" px="xs">
         <Stack gap={6} h="100%">
-          <Text size="xs" c="dimmed" fw={600} px="sm" mt="sm" mb="xs">
-            工作空间
-          </Text>
           <NavLink
             component={Link}
             href="/"
@@ -91,6 +88,7 @@ export function WorkspaceShell({
             leftSection={<Settings2 size={18} />}
           />
           <NavLink
+            component="button"
             label="任务记录"
             leftSection={<Activity size={18} />}
             onClick={() => {
@@ -99,13 +97,14 @@ export function WorkspaceShell({
             }}
           />
           <Box style={{ flex: 1 }} />
-          <Text size="xs" c="dimmed" px="sm" mb="xs">
+          <Text className="workspace-nav-caption" size="xs" c="dimmed" px="sm" mb="xs">
             资料与素材保存在本机
           </Text>
           <Button
             variant="subtle"
             color="gray"
             justify="start"
+            px="sm"
             leftSection={<LogOut size={16} />}
             disabled={!canSignOut}
             onClick={async () => {
