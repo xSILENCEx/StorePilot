@@ -79,6 +79,7 @@ export function TaskDrawer({
       title="任务记录"
       position="right"
       size="lg"
+      styles={{ content: { scrollbarGutter: "stable" } }}
       closeButtonProps={{ "aria-label": "关闭任务记录" }}
     >
       <Stack>
