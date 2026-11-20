@@ -30,8 +30,7 @@ import {
   Settings2,
   Sparkles,
 } from "lucide-react";
-import { WorkspaceShell } from "../../components/workspace-shell";
-import type { ConfigScope } from "../../lib/config-model";
+import type { ConfigScope } from "../../../lib/config-model";
 type Verification = {
   status: string;
   message: string;
@@ -752,7 +751,7 @@ export default function Settings() {
   }, []);
   const app = apps.find((a) => a.id === selected);
   return (
-    <WorkspaceShell active="settings" title="连接与模型">
+    <>
       <Stack gap="xl">
         <div className="page-heading">
           <Text className="eyebrow" mb={10}>
@@ -811,6 +810,6 @@ export default function Settings() {
           <ConnectionCard scope="image" />
         </SimpleGrid>
       </Stack>
-    </WorkspaceShell>
+    </>
   );
 }

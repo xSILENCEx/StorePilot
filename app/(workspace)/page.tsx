@@ -34,14 +34,14 @@ import {
   Settings2,
   Trash2,
 } from "lucide-react";
-import { WorkspaceShell } from "../components/workspace-shell";
-import type { DeviceGroup } from "../lib/screenshot-groups";
-import { availableStoreLocales } from "../lib/store-locales";
-import { ScreenshotList } from "../components/screenshot-list";
-import { StoreSyncPanel } from "../components/store-sync-panel";
-import { importMissing } from "../lib/apple-sync-model";
-import { useWorkspace } from "../lib/use-workspace";
-import type { Draft, Platform, StoreApp } from "../lib/model";
+import { useWorkspaceNavigation } from "../../components/workspace-shell";
+import type { DeviceGroup } from "../../lib/screenshot-groups";
+import { availableStoreLocales } from "../../lib/store-locales";
+import { ScreenshotList } from "../../components/screenshot-list";
+import { StoreSyncPanel } from "../../components/store-sync-panel";
+import { importMissing } from "../../lib/apple-sync-model";
+import { useWorkspace } from "../../lib/use-workspace";
+import type { Draft, Platform, StoreApp } from "../../lib/model";
 const empty = (): Draft => ({
   title: "",
   subtitle: "",
@@ -230,12 +230,9 @@ export default function Home() {
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
+  useWorkspaceNavigation(app?.name, app?.id, saved && !blocked);
   return (
-    <WorkspaceShell
-      title={app?.name ?? "应用管理"}
-      appId={app?.id}
-      canSignOut={saved && !blocked}
-    >
+    <>
       <Stack gap="xl">
         {message && (
           <Alert color="orange" withCloseButton onClose={() => setMessage("")}>
@@ -926,6 +923,6 @@ export default function Home() {
           </Button>
         </Group>
       </Modal>
-    </WorkspaceShell>
+    </>
   );
 }

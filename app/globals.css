@@ -207,10 +207,10 @@ a {
     white-space: nowrap;
     transition-property: width, transform;
   }
-  .workspace-nav:is(:hover, :has(:focus-visible)) {
+  .workspace-nav:not([data-dismissed]):is(:hover, :has(:focus-visible)) {
     width: 230px;
   }
-  .workspace-nav:not(:hover):not(:has(:focus-visible))
+  .workspace-nav:is([data-dismissed], :not(:hover):not(:has(:focus-visible)))
     :is(.workspace-nav-caption, .mantine-NavLink-body, .mantine-Button-label) {
     opacity: 0;
   }

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { createContext, useContext, useLayoutEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   AppShell,
   Burger,
@@ -16,19 +17,37 @@ import {
 } from "@mantine/core";
 import { Layers, Settings2, LogOut, Activity } from "lucide-react";
 import { TaskDrawer } from "./task-drawer";
-export function WorkspaceShell({
-  children,
-  active = "apps",
-  title = "应用管理",
-  appId,
-  canSignOut = true,
-}: {
-  children: React.ReactNode;
-  active?: "apps" | "settings";
+type NavigationDetails = {
   title?: string;
   appId?: string;
-  canSignOut?: boolean;
-}) {
+  canSignOut: boolean;
+};
+const NavigationContext = createContext<
+  ((value: NavigationDetails) => void) | null
+>(null);
+
+export function useWorkspaceNavigation(
+  title: string | undefined,
+  appId: string | undefined,
+  canSignOut: boolean,
+) {
+  const update = useContext(NavigationContext);
+  useLayoutEffect(() => {
+    update?.({ title, appId, canSignOut });
+  }, [update, title, appId, canSignOut]);
+}
+
+export function WorkspaceShell({ children }: { children: React.ReactNode }) {
+  const settings = usePathname() === "/settings";
+  const [details, setDetails] = useState<NavigationDetails>({
+    canSignOut: true,
+  });
+  const title = settings ? "连接与模型" : (details.title ?? "应用管理");
+  const [dismissed, setDismissed] = useState(false);
+  function closeNavigation() {
+    setOpened(false);
+    setDismissed(true);
+  }
   const [opened, setOpened] = useState(false);
   const [tasks, setTasks] = useState(false);
   return (
@@ -71,19 +90,28 @@ export function WorkspaceShell({
           </Badge>
         </Group>
       </AppShell.Header>
-      <AppShell.Navbar className="workspace-nav" py="md" px="xs">
+      <AppShell.Navbar
+        className="workspace-nav"
+        py="md"
+        px="xs"
+        data-dismissed={dismissed || undefined}
+        onPointerLeave={() => setDismissed(false)}
+        onFocusCapture={() => setDismissed(false)}
+      >
         <Stack gap={6} h="100%">
           <NavLink
+            onNavigate={closeNavigation}
             component={Link}
             href="/"
-            active={active === "apps"}
+            active={!settings}
             label="应用管理"
             leftSection={<Layers size={18} />}
           />
           <NavLink
+            onNavigate={closeNavigation}
             component={Link}
             href="/settings"
-            active={active === "settings"}
+            active={settings}
             label="连接与模型"
             leftSection={<Settings2 size={18} />}
           />
@@ -93,11 +121,17 @@ export function WorkspaceShell({
             leftSection={<Activity size={18} />}
             onClick={() => {
               setTasks(true);
-              setOpened(false);
+              closeNavigation();
             }}
           />
           <Box style={{ flex: 1 }} />
-          <Text className="workspace-nav-caption" size="xs" c="dimmed" px="sm" mb="xs">
+          <Text
+            className="workspace-nav-caption"
+            size="xs"
+            c="dimmed"
+            px="sm"
+            mb="xs"
+          >
             资料与素材保存在本机
           </Text>
           <Button
@@ -106,7 +140,7 @@ export function WorkspaceShell({
             justify="start"
             px="sm"
             leftSection={<LogOut size={16} />}
-            disabled={!canSignOut}
+            disabled={!settings && !details.canSignOut}
             onClick={async () => {
               const r = await fetch("/api/auth/sign-out", {
                 method: "POST",
@@ -122,13 +156,15 @@ export function WorkspaceShell({
       </AppShell.Navbar>
       <AppShell.Main>
         <Container size="xl" className="workspace-content">
-          {children}
+          <NavigationContext.Provider value={setDetails}>
+            {children}
+          </NavigationContext.Provider>
         </Container>
       </AppShell.Main>
       <TaskDrawer
         opened={tasks}
         onClose={() => setTasks(false)}
-        appId={appId}
+        appId={settings ? undefined : details.appId}
       />
     </AppShell>
   );
