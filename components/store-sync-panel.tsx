@@ -499,7 +499,7 @@ export function StoreSyncPanel({
                               </Button>
                             </Group>
                             <SimpleGrid
-                              cols={{ base: 2, sm: 3 }}
+                              cols={{ base: 2, xs: 3, sm: 4 }}
                               spacing="sm"
                               verticalSpacing="sm"
                             >
