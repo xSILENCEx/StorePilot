@@ -10,6 +10,7 @@ export class CheckError extends Error {
   constructor(
     public step: string,
     message: string,
+    public status?: number,
   ) {
     super(message);
   }
@@ -230,6 +231,7 @@ export async function storeRequest(
     throw new CheckError(
       stage,
       `HTTP ${response.status}：${help[response.status] ?? "服务请求失败，请检查服务状态后重试。"}`,
+      response.status,
     );
   }
   if (response.status === 204) return {};

@@ -26,7 +26,9 @@ export async function pullGoogleTask(
     const config = await workerConfig("google", job.app_id);
     if (config.revision !== input.configRevision)
       throw new StoreSyncError("配置已变更，请重新拉取。");
-    const snapshot = await readGoogleSnapshot(config);
+    const snapshot = await readGoogleSnapshot(config, fetch, (step, message) =>
+      logJob(job.id, step, message),
+    );
     const oldSnapshot = db()
       .select()
       .from(googleSnapshots)
@@ -86,10 +88,18 @@ export async function pullGoogleTask(
     );
   } catch (error) {
     const message =
-      error instanceof CheckError || error instanceof StoreSyncError
-        ? error.message
-        : "Google Play 商店资料同步失败，请检查配置或响应格式。";
-    finishJob(job.id, "failed", { error: message });
+      error instanceof CheckError
+        ? ({
+            google_auth: "Google OAuth 鉴权：",
+            google_edit: "创建 Google Play 临时 edit：",
+          }[error.step] ?? "") + error.message
+        : error instanceof StoreSyncError
+          ? error.message
+          : "Google Play 商店资料同步失败，请检查配置或响应格式。";
+    finishJob(job.id, "failed", {
+      error: message,
+      ...(error instanceof CheckError ? { step: error.step } : {}),
+    });
     logJob(job.id, "failed", message);
   }
 }
