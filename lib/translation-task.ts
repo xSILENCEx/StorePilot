@@ -1,3 +1,4 @@
+import { translationCanvas } from "./translation-image-size";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
@@ -98,12 +99,13 @@ async function translateImage(
   const buffer = await readFile(assetPath(item.value.split("/").at(-1)!));
   const meta = await sharp(buffer).metadata();
   const { width, height } = meta.autoOrient;
+  const canvas = translationCanvas(fields.model, width, height);
   const reply = await callImageModel(
     fields,
     secret,
     {
-      prompt: `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${width}x${height}.`,
-      modelSize: width + "x" + height,
+      prompt: `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${canvas}.`,
+      modelSize: canvas,
       quality: "auto",
       references: [],
     },
