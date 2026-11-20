@@ -46,6 +46,15 @@ export function mockApple(
         primaryLocale: "en-US",
         sku: "fixture-sku",
       });
+    else if (url.pathname.endsWith("/build"))
+      data = row("build1", {
+        iconAssetToken: {
+          width: 512,
+          height: 512,
+          templateUrl:
+            "https://is1.mzstatic.com/image/thumb/icon/{w}x{h}bb.{f}",
+        },
+      });
     else if (url.pathname.endsWith("/appStoreVersions")) {
       assert.equal(url.searchParams.get("filter[platform]"), "IOS");
       data = options.versions ?? [

@@ -581,6 +581,10 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
           .from(storeSnapshots)
           .where(eq(storeSnapshots.app_id, appId))
           .get()!;
+        assert.match(
+          second.current_snapshot.icon?.url ?? "",
+          /^\/api\/assets\//,
+        );
         assert.equal(Object.hasOwn(second, "previous_snapshot"), false);
         assert.equal(
           second.current_snapshot.locales["en-US"].draft.title,
@@ -686,9 +690,18 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
               : Response.json({
                   images: [{ id: "shot", url: "https://example.com/shot" }],
                 });
+          if (url.endsWith("/icon") || url.endsWith("/featureGraphic"))
+            return Response.json({
+              images: [
+                {
+                  id: "graphic",
+                  url: "https://example.com" + new URL(url).pathname,
+                },
+              ],
+            });
           assert.match(
             url,
-            /\/en-US\/(sevenInchScreenshots|tenInchScreenshots)$/,
+            /\/en-US\/(sevenInchScreenshots|tenInchScreenshots|tvBanner)$/,
           );
           return Response.json({});
         };
@@ -715,6 +728,10 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
             contactEmail: "support@example.com",
             contactWebsite: "https://example.com",
           });
+          assert.match(state.snapshot.icon.url, /^\/api\/assets\//);
+          assert.equal(state.snapshot.icon.url, entry.graphics.icon.url);
+          assert.ok(entry.graphics.featureGraphic.url);
+          assert.equal(entry.screenshots.length, 1);
           assert.equal(entry.draft.subtitle, "Short");
           assert.equal(entry.draft.video, "https://youtu.be/example");
           assert.equal(entry.screenshots[0].deviceType, "phoneScreenshots");

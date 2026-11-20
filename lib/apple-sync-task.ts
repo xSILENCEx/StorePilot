@@ -9,11 +9,11 @@ import {
 } from "./schema";
 import { workerConfig } from "./config-store";
 import { AppleReadError, readAppleSnapshot } from "./apple-sync";
-import { saveStoreScreenshots, StoreSyncError } from "./store-assets";
+import { saveStoreImages, StoreSyncError } from "./store-assets";
 import { finishJob, logJob } from "./job-store";
 export async function pullAppleTask(
   job: Job,
-  download?: Parameters<typeof saveStoreScreenshots>[2],
+  download?: Parameters<typeof saveStoreImages>[2],
 ) {
   const input = z
     .object({ configRevision: z.number(), appInfoId: z.string() })
@@ -30,7 +30,7 @@ export async function pullAppleTask(
       .where(eq(storeSnapshots.app_id, job.app_id))
       .get()?.current_snapshot;
     logJob(job.id, "images", "下载并保存各语言、设备的商店截图");
-    const screenshotCount = await saveStoreScreenshots(
+    const screenshotCount = await saveStoreImages(
       snapshot,
       oldSnapshot,
       download,

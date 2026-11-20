@@ -1,5 +1,5 @@
 import type { DeviceGroup } from "./screenshot-groups";
-import type { Draft, Platform } from "./model";
+import type { Draft, Platform, GraphicType } from "./model";
 export const textFields = [
   "title",
   "subtitle",
@@ -24,6 +24,7 @@ export type AppleScreenshot = {
   url: string | null;
 };
 export type AppleSnapshot = {
+  icon?: AppleScreenshot;
   deviceGroups?: DeviceGroup[];
   metadata: {
     name: string;
@@ -60,10 +61,15 @@ export type AppleSnapshot = {
 };
 export type StoreLocales = Record<
   string,
-  { draft: Draft; screenshots: AppleScreenshot[] }
+  {
+    draft: Draft;
+    screenshots: AppleScreenshot[];
+    graphics?: Partial<Record<GraphicType, AppleScreenshot>>;
+  }
 >;
 export type GoogleSnapshot = {
   packageName: string;
+  icon?: AppleScreenshot;
   details?: {
     defaultLanguage?: string;
     contactWebsite?: string;

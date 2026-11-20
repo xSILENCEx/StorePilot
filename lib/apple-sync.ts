@@ -268,7 +268,28 @@ export async function readAppleSnapshot(
   } catch {
     warnings.push("设备目录读取失败，本地编辑器可继续使用公开规格分组。");
   }
+  let icon: AppleSnapshot["icon"];
+  try {
+    const buildData = (
+      await request(
+        `/v1/appStoreVersions/${encodeURIComponent(version.id)}/build?fields[builds]=iconAssetToken`,
+      )
+    ).data;
+    if (buildData) {
+      const build = resource.parse(buildData);
+      if (build.attributes.iconAssetToken)
+        icon = screenshot(
+          build.id,
+          build,
+          "icon",
+          build.attributes.iconAssetToken,
+        );
+    }
+  } catch (error) {
+    if (!(error instanceof AppleReadError) || error.status !== 404) throw error;
+  }
   return {
+    icon,
     deviceGroups,
     metadata: {
       name: stringAttribute(app, "name"),
@@ -370,6 +391,7 @@ function screenshot(
   id: string,
   image: Resource,
   deviceType: string,
+  imageAsset = image.attributes.imageAsset,
 ): AppleSnapshot["locales"][string]["screenshots"][number] {
   const asset = z
     .object({
@@ -379,7 +401,7 @@ function screenshot(
     })
     .nullable()
     .optional()
-    .parse(image.attributes.imageAsset);
+    .parse(imageAsset);
   let sourceUrl: string | null = null;
   if (asset) {
     const url = new URL(

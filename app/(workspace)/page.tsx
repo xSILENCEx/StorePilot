@@ -37,6 +37,7 @@ import {
 import { useWorkspaceNavigation } from "../../components/workspace-shell";
 import type { DeviceGroup } from "../../lib/screenshot-groups";
 import { availableStoreLocales } from "../../lib/store-locales";
+import { StoreGraphicsEditor } from "../../components/store-graphics-editor";
 import { ScreenshotList } from "../../components/screenshot-list";
 import { StoreSyncPanel } from "../../components/store-sync-panel";
 import { importMissing } from "../../lib/apple-sync-model";
@@ -465,6 +466,27 @@ export default function Home() {
                   app={app}
                   locale={locale}
                   onCatalog={setCatalog}
+                  onImportGraphic={(targetLocale, remoteDraft, type, url) => {
+                    const key = `google:${targetLocale}`;
+                    const ok = persist((current) =>
+                      current.map((a) => {
+                        if (a.id !== app.id) return a;
+                        const draft = a.drafts[key] ?? remoteDraft;
+                        return {
+                          ...a,
+                          drafts: {
+                            ...a.drafts,
+                            [key]: {
+                              ...draft,
+                              graphics: { ...draft.graphics, [type]: url },
+                            },
+                          },
+                        };
+                      }),
+                    );
+                    if (ok) setLocale(targetLocale);
+                    return ok;
+                  }}
                   onImportLocale={(targetLocale, remoteDraft) => {
                     const key = `${platform}:${targetLocale}`;
                     const result = persist((current) =>
@@ -630,6 +652,14 @@ export default function Home() {
                     enabled={saved && !blocked}
                     updateDraft={update}
                   />
+                  {platform === "google" && (
+                    <StoreGraphicsEditor
+                      key={app.id + draftKey}
+                      draft={draft}
+                      enabled={editable && !!app.drafts[draftKey]}
+                      updateDraft={update}
+                    />
+                  )}
                   <Paper p={{ base: "md", sm: "xl" }}>
                     <Group justify="space-between" mb="xl">
                       <div>

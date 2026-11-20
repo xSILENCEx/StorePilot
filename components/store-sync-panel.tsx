@@ -19,6 +19,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { CloudDownload, Download, ImagePlus } from "lucide-react";
 import { deviceGroups } from "../lib/screenshot-groups";
+import { graphicTypes, graphicLabels, type GraphicType } from "../lib/model";
 import type { Draft, StoreApp, Platform } from "../lib/model";
 import {
   appleDeviceLabel,
@@ -51,6 +52,7 @@ export function StoreSyncPanel({
   locale,
   enabled,
   onImport,
+  onImportGraphic,
   onImportScreenshots,
   onImportLocale,
   onCatalog,
@@ -62,6 +64,12 @@ export function StoreSyncPanel({
   onCatalog: (catalog: AppleSnapshot["deviceGroups"]) => void;
   onImport: (snapshot: AppleSnapshot | GoogleSnapshot) => void;
   onImportLocale: (locale: string, draft: Draft) => boolean;
+  onImportGraphic: (
+    locale: string,
+    draft: Draft,
+    type: GraphicType,
+    url: string,
+  ) => boolean;
   onImportScreenshots: (
     locale: string,
     draft: Draft,
@@ -268,9 +276,12 @@ export function StoreSyncPanel({
                       {screenshotCount}
                     </Badge>
                   </Tabs.Tab>
+                  {!apple && <Tabs.Tab value="graphics">商店图片资源</Tabs.Tab>}
                   <Tabs.Tab value="app">应用信息</Tabs.Tab>
                 </Tabs.List>
-                {(tab === "metadata" || tab === "screenshots") && (
+                {(tab === "metadata" ||
+                  tab === "screenshots" ||
+                  tab === "graphics") && (
                   <Group justify="space-between" mt="lg">
                     <Select
                       aria-label="选择商店资料语言"
@@ -377,7 +388,7 @@ export function StoreSyncPanel({
                           ).map(([field, label]) => {
                             const key = field as keyof Omit<
                               Draft,
-                              "images" | "screenshotGroups"
+                              "images" | "screenshotGroups" | "graphics"
                             >;
                             const remote = entry.draft[key] ?? "";
                             return (
@@ -519,8 +530,96 @@ export function StoreSyncPanel({
                     </Text>
                   </Stack>
                 </Tabs.Panel>
+                {"packageName" in snapshot && (
+                  <Tabs.Panel value="graphics" pt="lg">
+                    <Stack>
+                      {graphicTypes.map((type) => {
+                        const image =
+                          snapshot.locales[selectedLocale]?.graphics?.[type];
+                        return (
+                          <Stack key={type} gap="xs">
+                            <Group justify="space-between">
+                              <Text fw={550}>{graphicLabels[type]}</Text>
+                              {image?.url && entry && (
+                                <Button
+                                  size="xs"
+                                  variant="light"
+                                  disabled={
+                                    !enabled ||
+                                    pending ||
+                                    state?.stale ||
+                                    local?.graphics?.[type] === image.url
+                                  }
+                                  onClick={() => {
+                                    if (
+                                      onImportGraphic(
+                                        selectedLocale,
+                                        entry.draft,
+                                        type,
+                                        image.url!,
+                                      )
+                                    )
+                                      notifications.show({
+                                        message: `已将${graphicLabels[type]}导入 ${selectedLocale} 草稿。`,
+                                      });
+                                  }}
+                                >
+                                  {local?.graphics?.[type] === image.url
+                                    ? "已导入"
+                                    : "导入此资源"}
+                                </Button>
+                              )}
+                            </Group>
+                            {image?.url ? (
+                              <button
+                                type="button"
+                                className="preview-button"
+                                style={{
+                                  width: "fit-content",
+                                  maxWidth: "100%",
+                                }}
+                                onClick={() => setPreview(image)}
+                                aria-label={`预览${graphicLabels[type]}`}
+                              >
+                                <img
+                                  src={image.url}
+                                  alt={graphicLabels[type]}
+                                  style={{
+                                    display: "block",
+                                    maxWidth: "100%",
+                                    maxHeight: 180,
+                                  }}
+                                />
+                              </button>
+                            ) : (
+                              <Text size="sm" c="dimmed">
+                                {snapshot.locales[selectedLocale]?.graphics
+                                  ? "此语言暂无该资源"
+                                  : "重新同步后可查看此语言的图片资源"}
+                              </Text>
+                            )}
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  </Tabs.Panel>
+                )}
                 <Tabs.Panel value="app" pt="lg">
                   <Stack>
+                    {snapshot.icon?.url && (
+                      <Group justify="space-between">
+                        <Text size="sm" c="dimmed">
+                          应用图标
+                        </Text>
+                        <img
+                          width={64}
+                          height={64}
+                          style={{ objectFit: "contain" }}
+                          src={snapshot.icon.url}
+                          alt="商店应用图标"
+                        />
+                      </Group>
+                    )}
                     {"packageName" in snapshot && !snapshot.details && (
                       <Text size="sm" c="dimmed">
                         重新同步商店资料后可查看默认语言和公开联系方式。
@@ -580,15 +679,16 @@ export function StoreSyncPanel({
       <Modal
         opened={opened && !!preview}
         onClose={() => setPreview(null)}
-        title="商店截图预览"
+        title="商店图片预览"
         size="850px"
       >
         {preview?.url && (
           <Stack>
-            <img className="image-preview" src={preview.url} alt="商店截图" />
+            <img className="image-preview" src={preview.url} alt="商店图片" />
             <Text size="xs" c="dimmed">
-              {groupLabel(preview.deviceType)} · {preview.width} ×{" "}
-              {preview.height}
+              {graphicLabels[preview.deviceType as GraphicType] ??
+                groupLabel(preview.deviceType)}{" "}
+              · {preview.width} × {preview.height}
             </Text>
             <Group justify="space-between">
               <Button variant="default" onClick={() => setPreview(null)}>
@@ -600,7 +700,7 @@ export function StoreSyncPanel({
                 download={preview.fileName || "store-screenshot.png"}
                 leftSection={<Download size={15} />}
               >
-                下载截图
+                下载图片
               </Button>
             </Group>
           </Stack>

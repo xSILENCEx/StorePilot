@@ -1,7 +1,12 @@
-import { allScreenshots } from "../../../lib/screenshot-groups";
-import { eq, and, inArray } from "drizzle-orm";
+import { draftAssetUrls } from "../../../lib/screenshot-groups";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { db } from "../../../lib/db";
-import { workspaces, assets } from "../../../lib/schema";
+import {
+  workspaces,
+  assets,
+  storeSnapshots,
+  googleSnapshots,
+} from "../../../lib/schema";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 import { workspaceSchema } from "../../../lib/model";
 export async function GET(request: Request) {
@@ -15,7 +20,40 @@ export async function GET(request: Request) {
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, "default"));
-    return json({ apps: row.apps, revision: row.revision });
+    const icons = new Map<string, { identifier: string; url: string }>();
+    for (const [platform, table, identifierPath] of [
+      ["apple", storeSnapshots, "$.target.bundleId"],
+      ["google", googleSnapshots, "$.packageName"],
+    ] as const) {
+      const rows = db()
+        .select({
+          appId: table.app_id,
+          identifier: sql<string>`json_extract(${table.current_snapshot}, ${identifierPath})`,
+          url: sql<
+            string | null
+          >`json_extract(${table.current_snapshot}, '$.icon.url')`,
+        })
+        .from(table)
+        .all();
+      for (const icon of rows)
+        if (icon.url)
+          icons.set(platform + ":" + icon.appId, {
+            identifier: icon.identifier,
+            url: icon.url,
+          });
+    }
+    return json({
+      apps: row.apps.map((app) => {
+        const platformIcons: Partial<Record<"apple" | "google", string>> = {};
+        for (const platform of ["apple", "google"] as const) {
+          const icon = icons.get(platform + ":" + app.id);
+          if (icon && icon.identifier === app[platform])
+            platformIcons[platform] = icon.url;
+        }
+        return { ...app, platformIcons };
+      }),
+      revision: row.revision,
+    });
   } catch (e) {
     return failure(e);
   }
@@ -30,7 +68,7 @@ export async function PUT(request: Request) {
       ...new Set(
         value.apps.flatMap((a) =>
           Object.values(a.drafts).flatMap((d) =>
-            allScreenshots(d).map((url) => url.split("/").at(-1)),
+            draftAssetUrls(d).map((url) => url.split("/").at(-1)),
           ),
         ),
       ),

@@ -2,6 +2,13 @@ import { z } from "zod";
 export const platformSchema = z.enum(["apple", "google"]);
 export type Platform = z.infer<typeof platformSchema>;
 const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
+export const graphicLabels = {
+  icon: "应用图标",
+  featureGraphic: "宣传图",
+  tvBanner: "Android TV 横幅",
+} as const;
+export const graphicTypes = ["icon", "featureGraphic", "tvBanner"] as const;
+export type GraphicType = (typeof graphicTypes)[number];
 export const draftSchema = z.object({
   title: z.string().max(1000),
   subtitle: z.string().max(1000),
@@ -15,6 +22,7 @@ export const draftSchema = z.object({
   privacyPolicyUrl: z.string().max(2000).optional(),
   privacyChoicesUrl: z.string().max(2000).optional(),
   images: z.array(assetUrl).max(50),
+  graphics: z.partialRecord(z.enum(graphicTypes), assetUrl).optional(),
   screenshotGroups: z
     .record(
       z
@@ -69,7 +77,9 @@ export function validateDraft(platform: Platform, draft: Draft) {
       : { title: 30, subtitle: 80, description: 4000 };
   return Object.entries(limits).flatMap(([field, limit]) => {
     const text =
-      draft[field as keyof Omit<Draft, "images" | "screenshotGroups">] ?? "";
+      draft[
+        field as keyof Omit<Draft, "images" | "screenshotGroups" | "graphics">
+      ] ?? "";
     const length =
       platform === "apple" && field === "keywords"
         ? new TextEncoder().encode(text).length

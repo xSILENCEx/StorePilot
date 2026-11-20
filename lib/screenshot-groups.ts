@@ -103,6 +103,15 @@ export function allScreenshots(draft: Draft) {
   ];
 }
 
+export function draftAssetUrls(draft: Draft) {
+  return [
+    ...new Set([
+      ...allScreenshots(draft),
+      ...Object.values(draft.graphics ?? {}),
+    ]),
+  ];
+}
+
 // Pixel dimensions from App Store Connect Help, Screenshot specifications.
 const appleDimensions: Record<string, string[]> = {
   IPHONE_DUO: ["1398 × 2034", "2034 × 1398", "2007 × 2853", "2853 × 2007"],

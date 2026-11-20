@@ -59,64 +59,71 @@ export async function queueStoreSync(
       })
       .strict()
       .parse(await request.json());
-    const id = db().transaction(
-      (tx) => {
-        const app = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get()
-          ?.apps.find((a) => a.id === input.appId);
-        if (!app?.[platform]) throw new HttpError(404, "当前平台应用不存在");
-        const config = tx
-          .select()
-          .from(connectionConfigs)
-          .where(eq(connectionConfigs.id, `${platform}:${input.appId}`))
-          .get();
-        if (!config?.secret)
-          throw new HttpError(
-            400,
-            "尚未保存商店连接凭据，请先在连接与模型中保存配置",
-          );
-        const parsed = configFields[platform].safeParse(config.fields);
-        if (!parsed.success) throw new HttpError(400, "商店连接配置不完整");
-        const identifier =
-          "bundleId" in parsed.data
-            ? parsed.data.bundleId
-            : parsed.data.packageName;
-        if (identifier !== app[platform])
-          throw new HttpError(409, "连接配置的应用标识与当前应用不一致");
-        if (
-          tx
-            .select()
-            .from(jobs)
-            .where(
-              and(
-                eq(jobs.app_id, input.appId),
-                eq(jobs.kind, `pull_${platform}`),
-                inArray(jobs.status, ["queued", "running"]),
-              ),
-            )
-            .get()
-        )
-          throw new HttpError(409, "已有商店资料同步任务，请等待完成");
-        return enqueue(
-          {
-            app_id: input.appId,
-            platform,
-            kind: `pull_${platform}`,
-            input: {
-              configRevision: config.revision,
-              appInfoId: input.appInfoId,
-            },
-          },
-          tx,
-        );
-      },
-      { behavior: "immediate" },
-    );
+    const id = enqueueStoreSync(platform, input);
     return json({ id }, 202);
   } catch (e) {
     return failure(e);
   }
+}
+
+export function enqueueStoreSync(
+  platform: "apple" | "google",
+  input: { appId: string; appInfoId: string },
+) {
+  return db().transaction(
+    (tx) => {
+      const app = tx
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, "default"))
+        .get()
+        ?.apps.find((a) => a.id === input.appId);
+      if (!app?.[platform]) throw new HttpError(404, "当前平台应用不存在");
+      const config = tx
+        .select()
+        .from(connectionConfigs)
+        .where(eq(connectionConfigs.id, `${platform}:${input.appId}`))
+        .get();
+      if (!config?.secret)
+        throw new HttpError(
+          400,
+          "尚未保存商店连接凭据，请先在连接与模型中保存配置",
+        );
+      const parsed = configFields[platform].safeParse(config.fields);
+      if (!parsed.success) throw new HttpError(400, "商店连接配置不完整");
+      const identifier =
+        "bundleId" in parsed.data
+          ? parsed.data.bundleId
+          : parsed.data.packageName;
+      if (identifier !== app[platform])
+        throw new HttpError(409, "连接配置的应用标识与当前应用不一致");
+      if (
+        tx
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.app_id, input.appId),
+              eq(jobs.kind, `pull_${platform}`),
+              inArray(jobs.status, ["queued", "running"]),
+            ),
+          )
+          .get()
+      )
+        throw new HttpError(409, "已有商店资料同步任务，请等待完成");
+      return enqueue(
+        {
+          app_id: input.appId,
+          platform,
+          kind: `pull_${platform}`,
+          input: {
+            configRevision: config.revision,
+            appInfoId: input.appInfoId,
+          },
+        },
+        tx,
+      );
+    },
+    { behavior: "immediate" },
+  );
 }

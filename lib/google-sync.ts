@@ -7,6 +7,7 @@ import {
 import { configFields } from "./config-model";
 import type { GoogleSnapshot } from "./apple-sync-model";
 
+import { graphicTypes, type GraphicType } from "./model";
 import { googleScreenshotDevices } from "./screenshot-groups";
 
 const appDetails = z.object({
@@ -85,16 +86,22 @@ export async function readGoogleSnapshot(
     for (const item of listings) {
       const screenshots: GoogleSnapshot["locales"][string]["screenshots"] = [];
       report("google_images", "读取 " + item.language + " 的各设备截图列表");
-      for (const deviceType of Object.keys(googleScreenshotDevices)) {
+      const graphics: NonNullable<
+        GoogleSnapshot["locales"][string]["graphics"]
+      > = {};
+      for (const deviceType of [
+        ...Object.keys(googleScreenshotDevices),
+        ...graphicTypes,
+      ]) {
         const { images } = imageList.parse(
           await read(
             `${url}/listings/${item.language}/${deviceType}`,
             "google_images",
-            `读取 ${item.language} / ${deviceType} 截图列表`,
+            `读取 ${item.language} / ${deviceType} 图片列表`,
           ),
         );
-        for (const image of images)
-          screenshots.push({
+        for (const image of images) {
+          const stored = {
             id: image.id,
             assetId: image.id,
             deviceType,
@@ -104,7 +111,11 @@ export async function readGoogleSnapshot(
             state: "available",
             sourceUrl: image.url,
             url: null,
-          });
+          };
+          if (Object.hasOwn(googleScreenshotDevices, deviceType))
+            screenshots.push(stored);
+          else graphics[deviceType as GraphicType] = stored;
+        }
       }
       locales[item.language] = {
         draft: {
@@ -116,10 +127,15 @@ export async function readGoogleSnapshot(
           images: [],
         },
         screenshots,
+        graphics,
       };
     }
     return {
       packageName,
+      icon:
+        locales[details.defaultLanguage ?? ""]?.graphics?.icon ??
+        Object.values(locales).find((entry) => entry.graphics?.icon)?.graphics
+          ?.icon,
       details,
       locales,
       fetchedAt: new Date().toISOString(),
