@@ -588,6 +588,7 @@ function ScreenshotGroup({
         </div>
         <Group gap="xs">
           <BatchDownload
+            size="sm"
             appId={appId}
             platform={platform}
             locale={locale}

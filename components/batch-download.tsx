@@ -5,7 +5,8 @@ import { notifications } from "@mantine/notifications";
 import { Download } from "lucide-react";
 import type { Platform } from "../lib/model";
 
-export function BatchDownload(props: {
+export function BatchDownload({ size = "xs", ...props }: {
+  size?: "xs" | "sm";
   appId: string;
   platform: Platform;
   locale: string;
@@ -47,7 +48,7 @@ export function BatchDownload(props: {
   return (
     <Button
       variant="default"
-      size="xs"
+      size={size}
       loading={busy}
       leftSection={<Download size={15} />}
       onClick={() => void download()}
