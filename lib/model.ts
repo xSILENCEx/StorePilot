@@ -5,9 +5,8 @@ const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
 export const graphicLabels = {
   icon: "应用图标",
   featureGraphic: "宣传图",
-  tvBanner: "Android TV 横幅",
 } as const;
-export const graphicTypes = ["icon", "featureGraphic", "tvBanner"] as const;
+export const graphicTypes = ["icon", "featureGraphic"] as const;
 export type GraphicType = (typeof graphicTypes)[number];
 export const draftSchema = z.object({
   title: z.string().max(1000),
@@ -22,7 +21,10 @@ export const draftSchema = z.object({
   privacyPolicyUrl: z.string().max(2000).optional(),
   privacyChoicesUrl: z.string().max(2000).optional(),
   images: z.array(assetUrl).max(50),
-  graphics: z.partialRecord(z.enum(graphicTypes), assetUrl).optional(),
+  // Older drafts may still reference a TV banner. Keep them editable.
+  graphics: z
+    .partialRecord(z.enum([...graphicTypes, "tvBanner"]), assetUrl)
+    .optional(),
   screenshotGroups: z
     .record(
       z

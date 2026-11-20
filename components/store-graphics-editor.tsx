@@ -64,7 +64,7 @@ export function StoreGraphicsEditor({
         <Title order={3} size="h4">
           商店图片资源
         </Title>
-        <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           {graphicTypes.map((type) => (
             <Stack key={type} gap="xs">
               <Text fw={550}>{graphicLabels[type]}</Text>
