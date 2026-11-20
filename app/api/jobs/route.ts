@@ -27,8 +27,11 @@ export async function GET(request: Request) {
           .all()
       : [];
     return json({
-      jobs: rows.map(({ input: _input, ...j }) => ({
+      jobs: rows.map(({ input, ...j }) => ({
         ...j,
+        ...(j.kind === "translate"
+          ? { languages: String(input.source) + " → " + String(input.target) }
+          : {}),
         logs: logs.filter((l) => l.job_id === j.id),
       })),
     });

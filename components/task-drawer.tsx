@@ -19,6 +19,7 @@ type Task = {
   platform: string;
   status: string;
   result: Record<string, unknown> | null;
+  languages?: string;
   logs: { step: string; message: string }[];
 };
 const statuses: Record<string, string> = {
@@ -29,6 +30,7 @@ const statuses: Record<string, string> = {
   uncertain: "结果未知",
 };
 const kinds: Record<string, string> = {
+  translate: "草稿翻译",
   generate_image: "图片生成",
   pull_google: "Google Play 商店资料同步",
   pull_apple: "Apple 商店资料同步",
@@ -100,6 +102,7 @@ export function TaskDrawer({
                 <Group justify="space-between" pr="sm">
                   <Text size="sm" fw={500}>
                     {kinds[j.kind] ?? j.kind}
+                    {j.languages && " · " + j.languages}
                   </Text>
                   <Badge
                     color={

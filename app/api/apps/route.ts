@@ -12,6 +12,19 @@ import { workspaceSchema } from "../../../lib/model";
 export async function GET(request: Request) {
   try {
     await authorize(request);
+    const known = new URL(request.url).searchParams.get("revision");
+    if (known !== null) {
+      const current = db()
+        .select({ revision: workspaces.revision })
+        .from(workspaces)
+        .where(eq(workspaces.id, "default"))
+        .get();
+      if (current && String(current.revision) === known)
+        return new Response(null, {
+          status: 204,
+          headers: { "Cache-Control": "private, no-store" },
+        });
+    }
     await db()
       .insert(workspaces)
       .values({ id: "default" })

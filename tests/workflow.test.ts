@@ -37,6 +37,7 @@ import { checkpointReply } from "../lib/image-provider";
 import { GET as getApps, PUT as saveApps } from "../app/api/apps/route";
 import { GET as getImages, POST as generate } from "../app/api/images/route";
 import { DELETE as removeImage } from "../app/api/images/[id]/route";
+import { POST as translate } from "../app/api/translations/route";
 import { POST as archive } from "../app/api/assets/archive/route";
 import { POST as uploadAsset } from "../app/api/assets/route";
 import { GET as getAsset } from "../app/api/assets/[id]/route";
@@ -810,22 +811,183 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
       },
     );
     await t.test("批量下载保留目录、顺序和图片原始内容", async () => {
-      const response = await archive(request("/api/assets/archive", "POST", {
-        appId, platform: "google", locale: "en-US", group: "手机截图",
-        items: [{ url: reference.url }, { url: reference.url }],
-      }));
+      const response = await archive(
+        request("/api/assets/archive", "POST", {
+          appId,
+          platform: "google",
+          locale: "en-US",
+          group: "手机截图",
+          items: [{ url: reference.url }, { url: reference.url }],
+        }),
+      );
       assert.equal(response.status, 200);
       const file = path.join(directory, "images.zip");
       await writeFile(file, Buffer.from(await response.arrayBuffer()));
-      const inspect = spawnSync("python3", ["-c", [
-        "import json, sys, zipfile",
-        "with zipfile.ZipFile(sys.argv[1]) as archive:",
-        "    print(json.dumps([[n, archive.read(n).hex()] for n in archive.namelist()]))",
-      ].join("\n"), file]);
+      const inspect = spawnSync("python3", [
+        "-c",
+        [
+          "import json, sys, zipfile",
+          "with zipfile.ZipFile(sys.argv[1]) as archive:",
+          "    print(json.dumps([[n, archive.read(n).hex()] for n in archive.namelist()]))",
+        ].join("\n"),
+        file,
+      ]);
       assert.equal(inspect.status, 0, inspect.stderr.toString());
-      assert.deepEqual(JSON.parse(inspect.stdout.toString()), ["01", "02"].map(index =>
-        [`GooglePlay_en-US_80x120/${index}_手机截图_80x120.png`, bytes.toString("hex")]));
+      assert.deepEqual(
+        JSON.parse(inspect.stdout.toString()),
+        ["01", "02"].map((index) => [
+          `GooglePlay_en-US_80x120/${index}_手机截图_80x120.png`,
+          bytes.toString("hex"),
+        ]),
+      );
     });
+    await t.test(
+      "批量翻译按语言独立提交，细选覆盖，失败或并发编辑保留原草稿",
+      async () => {
+        const workspace = () => db().select().from(workspaces).get()!;
+        const row = workspace();
+        const drafts = row.apps[0].drafts;
+        const icon = await sharp({
+          create: { width: 512, height: 512, channels: 3, background: "red" },
+        })
+          .png()
+          .toBuffer();
+        const localized = await sharp(icon).negate().png().toBuffer();
+        drafts["google:en-US"] = {
+          ...draft,
+          description: "Original",
+          video: "https://example.com/video",
+          graphics: { icon: (await storeAsset(icon)).url },
+        };
+        assert.equal(
+          (
+            await saveApps(
+              request("/api/apps", "PUT", {
+                apps: row.apps,
+                revision: row.revision,
+              }),
+            )
+          ).status,
+          200,
+        );
+        await saveConfig(
+          "text",
+          undefined,
+          0,
+          {
+            baseUrl: "https://text.example/v1",
+            model: "text-model",
+            timeoutSeconds: 30,
+          },
+          "test-only",
+        );
+        let calls = 0;
+        globalThis.fetch = async (url, init) => {
+          if (String(url).endsWith("/images/edits")) {
+            assert.ok(
+              init?.body instanceof FormData &&
+                init.body.get("image") instanceof Blob,
+            );
+            return Response.json({
+              data: [{ b64_json: localized.toString("base64") }],
+            });
+          }
+          assert.equal(String(url), "https://text.example/v1/chat/completions");
+          const payload = JSON.parse(
+            JSON.parse(String(init?.body)).messages[1].content,
+          );
+          assert.deepEqual(payload.fields, { title: "Test" });
+          calls++;
+          if (payload.target === "de-DE") return Response.json({ choices: [] });
+          return Response.json({
+            choices: [
+              { message: { content: JSON.stringify({ title: "Titre" }) } },
+            ],
+          });
+        };
+        const submit = (
+          targets: string[],
+          mode = "add",
+          selected = ["title", "graphic:icon", "video"],
+        ) =>
+          translate(
+            request("/api/translations", "POST", {
+              appId,
+              platform: "google",
+              mode,
+              source: "en-US",
+              targets,
+              selected,
+              revision: workspace().revision,
+            }),
+          );
+        assert.equal((await submit(["en-US"])).status, 400);
+        const response = await submit(["fr-FR", "de-DE"]);
+        assert.equal(response.status, 202);
+        assert.equal((await submit(["fr-FR"])).status, 409);
+        const run = async (id: string) => {
+          const job = db().select().from(jobs).where(eq(jobs.id, id)).get()!;
+          await executeJob(job);
+          return db().select().from(jobs).where(eq(jobs.id, id)).get()!;
+        };
+        const { ids } = await response.json();
+        assert.equal((await run(ids[0])).status, "succeeded");
+        assert.equal((await run(ids[1])).status, "failed");
+        assert.equal(calls, 2);
+        const translated = workspace().apps[0].drafts["google:fr-FR"];
+        assert.equal(translated.title, "Titre");
+        assert.equal(translated.description, "");
+        assert.equal(translated.video, "https://example.com/video");
+        assert.ok(
+          translated.graphics?.icon &&
+            translated.graphics.icon !== drafts["google:en-US"].graphics?.icon,
+        );
+        assert.equal(workspace().apps[0].drafts["google:de-DE"], undefined);
+        assert.equal((await submit(["fr-FR"])).status, 400);
+        const update = await submit(["fr-FR"], "update", ["video"]);
+        assert.equal(update.status, 202);
+        assert.equal(
+          (await run((await update.json()).ids[0])).status,
+          "succeeded",
+        );
+        assert.deepEqual(
+          workspace().apps[0].drafts["google:fr-FR"],
+          translated,
+        );
+        const invalidImage = await submit(["fr-FR"], "update", [
+          "title",
+          "graphic:icon",
+        ]);
+        const modelFetch = globalThis.fetch;
+        globalThis.fetch = async (url, init) =>
+          String(url).endsWith("/images/edits")
+            ? Response.json({ data: [{ b64_json: bytes.toString("base64") }] })
+            : modelFetch(url, init);
+        assert.equal(
+          (await run((await invalidImage.json()).ids[0])).status,
+          "failed",
+        );
+        assert.deepEqual(
+          workspace().apps[0].drafts["google:fr-FR"],
+          translated,
+        );
+        const pending = await submit(["fr-FR"], "update", ["video"]);
+        const changed = workspace();
+        changed.apps[0].drafts["google:fr-FR"].title = "Manual";
+        assert.equal(
+          (await saveApps(request("/api/apps", "PUT", changed))).status,
+          200,
+        );
+        assert.equal(
+          (await run((await pending.json()).ids[0])).status,
+          "failed",
+        );
+        assert.equal(
+          workspace().apps[0].drafts["google:fr-FR"].title,
+          "Manual",
+        );
+      },
+    );
     sqlite().pragma("integrity_check");
   } finally {
     globalThis.fetch = originalFetch;

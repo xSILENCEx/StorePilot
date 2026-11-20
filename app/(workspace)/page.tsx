@@ -37,6 +37,7 @@ import {
 import { useWorkspaceNavigation } from "../../components/workspace-shell";
 import type { DeviceGroup } from "../../lib/screenshot-groups";
 import { availableStoreLocales } from "../../lib/store-locales";
+import { TranslationDialog } from "../../components/translation-dialog";
 import { StoreGraphicsEditor } from "../../components/store-graphics-editor";
 import { ScreenshotList } from "../../components/screenshot-list";
 import { StoreSyncPanel } from "../../components/store-sync-panel";
@@ -52,7 +53,7 @@ const empty = (): Draft => ({
 });
 export default function Home() {
   const [message, setMessage] = useState("");
-  const { apps, ready, saved, blocked, persist, retry } =
+  const { apps, ready, saved, blocked, persist, retry, revision } =
     useWorkspace(setMessage);
   const [selected, select] = useState<string | null>(null);
   const [platform, setPlatform] = useState<Platform>("apple");
@@ -64,8 +65,10 @@ export default function Home() {
   const [name, setName] = useState("");
   const [apple, setApple] = useState("");
   const [google, setGoogle] = useState("");
-  const [languageModal, setLanguageModal] = useState(false);
-  const [languageSearch, setLanguageSearch] = useState("");
+  const [languageModal, setLanguageModal] = useState<"add" | "update" | null>(
+    null,
+  );
+  const [primaryLocale, setPrimaryLocale] = useState<string>();
   const [deleteLanguage, setDeleteLanguage] = useState(false);
   const [validating, setValidating] = useState(false);
   const [connection, setConnection] = useState<{
@@ -83,11 +86,6 @@ export default function Home() {
         .map((key) => key.slice(platform.length + 1))
     : [];
   const candidates = availableStoreLocales(platform, locales);
-  const matchingLanguages = candidates.filter(({ name, code }) =>
-    (name + " " + code)
-      .toLowerCase()
-      .includes(languageSearch.trim().toLowerCase()),
-  );
   const editable = ready && !blocked;
   const connectionConfigured =
     connection?.appId === selected &&
@@ -179,20 +177,34 @@ export default function Home() {
       setModal(false);
     }
   }
-  function addLanguage(code: string) {
-    if (!app || !editable || !candidates.some((option) => option.code === code))
+  function addLanguages(codes: string[]) {
+    if (
+      !app ||
+      !editable ||
+      !codes.every((code) => candidates.some((option) => option.code === code))
+    )
       return;
-    const key = `${platform}:${code}`;
+    const additions = Object.fromEntries(
+      codes.map((code) => [platform + ":" + code, empty()]),
+    );
     const added = persist((current) =>
       current.map((a) =>
-        a.id === app.id && !a.drafts[key]
-          ? { ...a, drafts: { ...a.drafts, [key]: empty() } }
+        a.id === app.id
+          ? {
+              ...a,
+              drafts: {
+                ...a.drafts,
+                ...Object.fromEntries(
+                  Object.entries(additions).filter(([key]) => !a.drafts[key]),
+                ),
+              },
+            }
           : a,
       ),
     );
     if (added) {
-      setLocale(code);
-      setLanguageModal(false);
+      setLocale(codes[0]);
+      setLanguageModal(null);
     }
   }
   function download() {
@@ -491,32 +503,42 @@ export default function Home() {
                 </Button>
               </Group>
               {app[platform] && (
-                <StoreSyncPanel
-                  key={app.id + platform}
-                  platform={platform}
-                  app={app}
-                  locale={locale}
-                  onCatalog={setCatalog}
-                  enabled={saved && !blocked && !!connectionConfigured}
-                  onImport={(snapshot, section, languages) =>
-                    persist((current) =>
-                      current.map((a) =>
-                        a.id === app.id
-                          ? {
-                              ...a,
-                              drafts: overwriteStoreDrafts(
-                                a.drafts,
-                                snapshot,
-                                platform,
-                                section,
-                                languages,
-                              ),
-                            }
-                          : a,
-                      ),
-                    )
-                  }
-                />
+                <Group gap="xs">
+                  <Button
+                    variant="default"
+                    disabled={!editable || !saved || locales.length < 2}
+                    onClick={() => setLanguageModal("update")}
+                  >
+                    翻译
+                  </Button>
+                  <StoreSyncPanel
+                    key={app.id + platform}
+                    platform={platform}
+                    app={app}
+                    locale={locale}
+                    onPrimary={setPrimaryLocale}
+                    onCatalog={setCatalog}
+                    enabled={saved && !blocked && !!connectionConfigured}
+                    onImport={(snapshot, section, languages) =>
+                      persist((current) =>
+                        current.map((a) =>
+                          a.id === app.id
+                            ? {
+                                ...a,
+                                drafts: overwriteStoreDrafts(
+                                  a.drafts,
+                                  snapshot,
+                                  platform,
+                                  section,
+                                  languages,
+                                ),
+                              }
+                            : a,
+                        ),
+                      )
+                    }
+                  />
+                </Group>
               )}
             </Group>
             {app[platform] ? (
@@ -542,8 +564,7 @@ export default function Home() {
                         }
                         disabled={!editable || !candidates.length}
                         onClick={() => {
-                          setLanguageSearch("");
-                          setLanguageModal(true);
+                          setLanguageModal("add");
                         }}
                       >
                         <Plus size={16} />
@@ -814,48 +835,20 @@ export default function Home() {
           </Stack>
         </form>
       </Modal>
-      <Modal
-        opened={languageModal}
-        onClose={() => setLanguageModal(false)}
-        title="添加语言"
-        size="sm"
-      >
-        <Stack gap="sm">
-          <TextInput
-            data-autofocus
-            aria-label="搜索语言"
-            placeholder="搜索语言名称或代码"
-            value={languageSearch}
-            onChange={(event) => setLanguageSearch(event.currentTarget.value)}
-            leftSection={<Search size={16} />}
-          />
-          <Stack gap={2} mah="min(55dvh, 420px)" style={{ overflowY: "auto" }}>
-            {matchingLanguages.map(({ name, code }) => (
-              <Button
-                key={code}
-                style={{ flexShrink: 0 }}
-                variant="subtle"
-                color="gray"
-                justify="space-between"
-                rightSection={
-                  <Text component="span" size="xs" c="dimmed">
-                    {code}
-                  </Text>
-                }
-                disabled={!editable}
-                onClick={() => addLanguage(code)}
-              >
-                {name}
-              </Button>
-            ))}
-            {!matchingLanguages.length && (
-              <Text size="sm" c="dimmed">
-                没有可添加的匹配语言
-              </Text>
-            )}
-          </Stack>
-        </Stack>
-      </Modal>
+      {languageModal && app && (
+        <TranslationDialog
+          key={app.id + platform + languageModal}
+          mode={languageModal}
+          app={app}
+          platform={platform}
+          locale={locale}
+          primary={primaryLocale}
+          revision={revision}
+          enabled={editable && saved}
+          close={() => setLanguageModal(null)}
+          addBlank={addLanguages}
+        />
+      )}
       <Modal
         opened={deleteLanguage}
         onClose={() => setDeleteLanguage(false)}

@@ -1,3 +1,4 @@
+import { translateJob } from "./translation-task";
 import { draftAssetUrls } from "./screenshot-groups";
 import sharp from "sharp";
 import { appSchema, validateDraft, platformSchema } from "./model";
@@ -11,6 +12,8 @@ import type { Job } from "./schema";
 export async function executeJob(job: Job) {
   try {
     switch (job.kind) {
+      case "translate":
+        return await translateJob(job);
       case "generate_image":
         return await generateImageTask(job);
       case "verify_connection":

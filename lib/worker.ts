@@ -64,6 +64,12 @@ export async function recoverJobs() {
         continue;
       }
     }
+    if (job.kind === "translate") {
+      finishJob(job.id, "uncertain", {
+        error: "翻译被中断，目标草稿未写入。请检查后手动重试。",
+      });
+      continue;
+    }
     if (job.kind === "pull_google") {
       const message = "同步中断，请检查临时 edit 后重新同步。";
       finishJob(job.id, "uncertain", { error: message });

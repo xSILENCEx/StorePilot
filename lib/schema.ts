@@ -56,6 +56,7 @@ export const jobs = sqliteTable(
     kind: text("kind", {
       enum: [
         "generate_image",
+        "translate",
         "verify_connection",
         "pull_apple",
         "pull_google",

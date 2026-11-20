@@ -37,6 +37,53 @@ export function useWorkspace(onError: (message: string) => void) {
   useEffect(() => {
     void load();
   }, [load]);
+  // Background translations commit a new workspace revision independently of this tab.
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    let pending = false;
+    async function refresh() {
+      if (
+        document.hidden ||
+        pending ||
+        saving.current ||
+        halted.current ||
+        version.current !== stored.current
+      )
+        return;
+      const base = revision.current;
+      const edit = version.current;
+      pending = true;
+      try {
+        const response = await fetch("/api/apps?revision=" + base, {
+          cache: "no-store",
+        });
+        if (!response.ok || response.status === 204) return;
+        const data = await response.json();
+        if (
+          active &&
+          revision.current === base &&
+          version.current === edit &&
+          !halted.current
+        ) {
+          revision.current = data.revision;
+          latest.current = data.apps;
+          setApps(data.apps);
+        }
+      } catch {
+        /* Retry on the next poll. */
+      } finally {
+        pending = false;
+      }
+    }
+    const timer = setInterval(refresh, 4000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [ready]);
   const flush = useCallback(async () => {
     if (saving.current || halted.current || stored.current === version.current)
       return;
@@ -98,5 +145,13 @@ export function useWorkspace(onError: (message: string) => void) {
     if (!ready) void load();
     else void flush();
   }
-  return { apps, ready, saved, blocked, persist, retry };
+  return {
+    apps,
+    ready,
+    saved,
+    blocked,
+    persist,
+    retry,
+    revision: revision.current,
+  };
 }
