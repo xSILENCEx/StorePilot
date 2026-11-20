@@ -182,6 +182,9 @@ const appleDimensions: Record<string, string[]> = {
     "1024 × 748",
     "1024 × 768",
   ],
+  MAC_APP_STORE: ["1280 × 800", "1440 × 900", "2560 × 1600", "2880 × 1800"],
+  TV_APP_STORE: ["1920 × 1080", "3840 × 2160"],
+  VISION_PRO_APP_STORE: ["3840 × 2160"],
   WATCH_ULTRA: ["422 × 514", "410 × 502"],
   WATCH_SERIES_10: ["416 × 496"],
   WATCH_SERIES_7: ["396 × 484"],
@@ -239,10 +242,19 @@ export function screenDimensions(device: DeviceGroup) {
         : googleTabletPresets;
     return presets.flatMap(([w, h]) => [`${w} × ${h}`, `${h} × ${w}`]);
   }
+  return appleScreenDimensions(device);
+}
+
+export function appleScreenDimensions(device: DeviceGroup) {
   const display = Object.entries(appleDevices).find(
     ([, label]) => label === device.label,
   )?.[0];
-  return appleDimensions[device.value] ?? appleDimensions[display ?? ""] ?? [];
+  return (
+    appleDimensions[device.value] ??
+    appleDimensions[display ?? ""] ??
+    appleDimensions[device.value.replace(/_PROFILE$/, "_DISPLAY")] ??
+    []
+  );
 }
 
 export const screenModelSizes = new Set(

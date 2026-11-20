@@ -1,4 +1,5 @@
 "use client";
+import { storeImage } from "../lib/store-image-client";
 import { useState } from "react";
 import {
   ActionIcon,
@@ -38,16 +39,13 @@ export function StoreGraphicsEditor({
     if (!file) return;
     setUploading(type);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch("/api/assets", {
-        method: "POST",
-        body: form,
+      const url = await storeImage(file, {
+        kind: "graphic",
+        platform: "google",
+        type,
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "上传失败");
       updateDraft((current) => ({
-        graphics: { ...current.graphics, [type]: result.url },
+        graphics: { ...current.graphics, [type]: url },
       }));
     } catch (error) {
       notifications.show({
@@ -70,7 +68,12 @@ export function StoreGraphicsEditor({
             const label = graphicLabels[type];
             return (
               <Stack key={type} gap="xs">
-                <Text fw={550}>{label}</Text>
+                <Text fw={550}>
+                  {label}{" "}
+                  <Text component="span" size="xs" c="dimmed">
+                    {type === "icon" ? "512 × 512" : "1024 × 500"} px
+                  </Text>
+                </Text>
                 <div className="graphic-slot">
                   {url && (
                     <UnstyledButton

@@ -1,4 +1,5 @@
 "use client";
+import { storeImage } from "../lib/store-image-client";
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
@@ -484,25 +485,44 @@ function ScreenshotGroup({
       return setGroupImages(current, group.value, result);
     });
   }
-  function moveToGroup(src: string, target: string) {
-    updateDraft((current) => {
-      const existing = groupImages(current, target);
-      const next = [...new Set([...existing, src])];
-      if (next.length > (groups.find((g) => g.value === target)?.limit ?? 0)) {
-        notifications.show({ color: "orange", message: "目标设备组已满" });
-        return {};
-      }
-      const removed = setGroupImages(
-        current,
-        group.value,
-        groupImages(current, group.value).filter((url) => url !== src),
-      );
-      return {
-        ...removed,
-        ...setGroupImages({ ...current, ...removed }, target, next),
-      };
-    });
-    setPreview(null);
+  async function moveToGroup(src: string, target: string) {
+    setBusy(true);
+    try {
+      const converted = await storeImage(src, {
+        kind: "screenshot",
+        platform,
+        appId,
+        group: target,
+      });
+
+      updateDraft((current) => {
+        const existing = groupImages(current, target);
+        const next = [...new Set([...existing, converted])];
+        if (
+          next.length > (groups.find((g) => g.value === target)?.limit ?? 0)
+        ) {
+          notifications.show({ color: "orange", message: "目标设备组已满" });
+          return {};
+        }
+        const removed = setGroupImages(
+          current,
+          group.value,
+          groupImages(current, group.value).filter((url) => url !== src),
+        );
+        return {
+          ...removed,
+          ...setGroupImages({ ...current, ...removed }, target, next),
+        };
+      });
+      setPreview(null);
+    } catch (error) {
+      notifications.show({
+        color: "red",
+        message: error instanceof Error ? error.message : "移动失败",
+      });
+    } finally {
+      setBusy(false);
+    }
   }
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -515,12 +535,17 @@ function ScreenshotGroup({
       for (const file of files) {
         if (file.size > 20 * 1024 * 1024)
           throw new Error(`${file.name} 超过 20 MB`);
-        const form = new FormData();
-        form.set("file", file);
-        const r = await fetch("/api/assets", { method: "POST", body: form });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error);
-        added.push(data.url);
+        added.push(
+          await storeImage(file, {
+            kind: "screenshot",
+            platform,
+            appId,
+            group: group.value,
+            preferred: screenSize,
+          }).catch((error) => {
+            throw new Error(file.name + "：" + error.message);
+          }),
+        );
       }
     } catch (e) {
       notifications.show({
@@ -770,7 +795,7 @@ function ScreenshotGroup({
               />
               <Button
                 variant="default"
-                disabled={!enabled || !destination}
+                disabled={!enabled || busy || !destination}
                 onClick={() => destination && moveToGroup(preview, destination)}
               >
                 移动截图

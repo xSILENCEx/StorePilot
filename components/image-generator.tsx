@@ -1,4 +1,5 @@
 "use client";
+import { storeImage } from "../lib/store-image-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Accordion,
@@ -185,17 +186,19 @@ export function ImageGenerator({
       for (const file of files) {
         if (file.size > 20 * 1024 * 1024)
           throw new Error(`${file.name} 超过 20 MB`);
-        const form = new FormData();
-        form.set("file", file);
-        const response = await fetch("/api/assets", {
-          method: "POST",
-          body: form,
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-        const append = (urls: string[]) => [
-          ...new Set([...urls, data.url as string]),
-        ];
+        const url = await storeImage(
+          file,
+          area === "screenshots" && deviceGroup
+            ? {
+                kind: "screenshot",
+                appId,
+                platform,
+                group: deviceGroup,
+                preferred: screenSize,
+              }
+            : undefined,
+        );
+        const append = (urls: string[]) => [...new Set([...urls, url])];
         setUploaded((current) => ({
           ...current,
           [area]: append(current[area]),
@@ -227,14 +230,33 @@ export function ImageGenerator({
       setDeleting(null);
     }
   }
-  function add(image: ImageRecord) {
+  const [converted, setConverted] = useState<Record<string, string>>({});
+  const alreadyAdded = (url: string) =>
+    sourceImages.includes(converted[url] ?? url);
+  async function add(image: ImageRecord) {
     if (!image.result?.url) return;
-    onAdd(image.result.url);
-    notifications.show({
-      title: "已加入商店截图",
-      message: "可以在页面中调整顺序。",
-      icon: <Check size={16} />,
-    });
+    setBusy(true);
+    try {
+      const original = image.result.url;
+      const url = await storeImage(original, {
+        kind: "screenshot",
+        platform,
+        appId,
+        group: deviceGroup,
+        preferred: screenSize,
+      });
+      setConverted((prev) => ({ ...prev, [original]: url }));
+      onAdd(url);
+      notifications.show({
+        title: "已加入商店截图",
+        message: "可以在页面中调整顺序。",
+        icon: <Check size={16} />,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "图片处理失败");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const disabled = !enabled || busy || retryPending;
@@ -596,12 +618,11 @@ export function ImageGenerator({
                             size="xs"
                             variant="light"
                             disabled={
-                              !enabled ||
-                              sourceImages.includes(image.result.url)
+                              disabled || alreadyAdded(image.result.url)
                             }
                             onClick={() => add(image)}
                           >
-                            {sourceImages.includes(image.result.url)
+                            {alreadyAdded(image.result.url)
                               ? "已加入截图"
                               : "加入商店截图"}
                           </Button>
@@ -655,12 +676,10 @@ export function ImageGenerator({
                   下载
                 </Button>
                 <Button
-                  disabled={
-                    !enabled || sourceImages.includes(preview.result.url)
-                  }
+                  disabled={disabled || alreadyAdded(preview.result.url)}
                   onClick={() => add(preview)}
                 >
-                  {sourceImages.includes(preview.result.url)
+                  {alreadyAdded(preview.result.url)
                     ? "已加入截图"
                     : "加入商店截图"}
                 </Button>

@@ -37,6 +37,7 @@ import { checkpointReply } from "../lib/image-provider";
 import { GET as getApps, PUT as saveApps } from "../app/api/apps/route";
 import { GET as getImages, POST as generate } from "../app/api/images/route";
 import { DELETE as removeImage } from "../app/api/images/[id]/route";
+import { POST as uploadAsset } from "../app/api/assets/route";
 import { GET as getAsset } from "../app/api/assets/[id]/route";
 import { POST as verify } from "../app/api/settings/[scope]/verify/route";
 import { POST as pullApple } from "../app/api/apple-sync/route";
@@ -90,6 +91,54 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
       });
     }
     const appId = randomUUID();
+    await t.test(
+      "上传和已有素材转为商店图片时按目标校验，拒绝放大",
+      async () => {
+        const png = await sharp({
+          create: {
+            width: 1024,
+            height: 1024,
+            channels: 4,
+            background: "blue",
+          },
+        })
+          .png()
+          .toBuffer();
+        const form = new FormData();
+        form.set(
+          "file",
+          new File([new Uint8Array(png)], "icon.png", { type: "image/png" }),
+        );
+        const send = (body: FormData) =>
+          uploadAsset(
+            new Request(origin + "/api/assets", {
+              method: "POST",
+              headers: { cookie, Origin: origin },
+              body,
+            }),
+          );
+        form.set(
+          "target",
+          JSON.stringify({ kind: "graphic", platform: "google", type: "icon" }),
+        );
+        const response = await send(form);
+        assert.equal(response.status, 201);
+        const result = await response.json();
+        assert.deepEqual([result.width, result.height], [512, 512]);
+        form.delete("file");
+        form.set("asset", result.url);
+        assert.equal((await (await send(form)).json()).url, result.url);
+        form.set(
+          "target",
+          JSON.stringify({
+            kind: "graphic",
+            platform: "google",
+            type: "featureGraphic",
+          }),
+        );
+        assert.equal((await send(form)).status, 400);
+      },
+    );
     const draft = {
       title: "Test",
       subtitle: "",
