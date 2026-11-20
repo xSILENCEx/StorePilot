@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import {
+  Paper,
+  UnstyledButton,
   Alert,
   Button,
   Checkbox,
@@ -12,6 +14,8 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { appleDeviceLabel } from "../lib/apple-sync-model";
 import { notifications } from "@mantine/notifications";
 import type { StoreApp, Platform } from "../lib/model";
 import { translationItems, type TranslationItem } from "../lib/translation";
@@ -48,9 +52,37 @@ function SelectionGroup({
     for (const item of items)
       if (item.kind === "screenshot")
         groups.set(item.group, [...(groups.get(item.group) ?? []), item]);
+  function renderItems(entries: TranslationItem[]) {
+    return (
+      <div className="translation-item-grid">
+        {entries.map((item) => (
+          <Checkbox
+            key={item.id}
+            checked={selected.includes(item.id)}
+            label={
+              <Group gap="xs" wrap="nowrap">
+                {(item.kind === "graphic" || item.kind === "screenshot") && (
+                  <img
+                    src={item.value}
+                    alt=""
+                    width={44}
+                    height={50}
+                    style={{ objectFit: "contain" }}
+                  />
+                )}
+                {item.label}
+              </Group>
+            }
+            styles={{ body: { alignItems: "center" } }}
+            onChange={(e) => toggle([item.id], e.currentTarget.checked)}
+          />
+        ))}
+      </div>
+    );
+  }
   return (
-    <Stack gap="xs">
-      <Group gap="xs">
+    <Paper withBorder radius="md" p="md">
+      <Group wrap="nowrap" gap="sm">
         <Checkbox
           aria-label={"选择" + title}
           checked={count === items.length}
@@ -62,53 +94,58 @@ function SelectionGroup({
             )
           }
         />
-        <Button
-          variant="subtle"
-          size="compact-sm"
+        <UnstyledButton
           aria-expanded={open}
           onClick={() => setOpen(!open)}
+          style={{ flex: 1 }}
         >
-          {open ? "▾" : "▸"} {title}（{count}/{items.length}）
-        </Button>
+          <Group justify="space-between" wrap="nowrap">
+            <Text fw={600} size="sm">
+              {title}
+            </Text>
+            <Group gap="xs" wrap="nowrap">
+              <Text size="xs" c="dimmed">
+                {count} / {items.length}
+              </Text>
+              {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </Group>
+          </Group>
+        </UnstyledButton>
       </Group>
       {open && (
-        <Stack pl="xl" gap="xs">
+        <Stack className="translation-module-body" gap="md">
           {devices
-            ? [...groups].map(([group, entries]) => (
-                <SelectionGroup
-                  key={group}
-                  title={
-                    entries[0].kind === "screenshot" ? entries[0].device : group
-                  }
-                  items={entries}
-                  selected={selected}
-                  toggle={toggle}
-                />
-              ))
-            : items.map((i) => (
-                <Checkbox
-                  key={i.id}
-                  checked={selected.includes(i.id)}
-                  label={
-                    <Group gap="xs">
-                      {(i.kind === "graphic" || i.kind === "screenshot") && (
-                        <img
-                          src={i.value}
-                          alt=""
-                          width={38}
-                          height={38}
-                          style={{ objectFit: "contain" }}
-                        />
-                      )}
-                      {i.label}
-                    </Group>
-                  }
-                  onChange={(e) => toggle([i.id], e.currentTarget.checked)}
-                />
-              ))}
+            ? [...groups].map(([group, entries]) => {
+                const device = entries[0];
+                const label =
+                  device.kind === "screenshot" && device.device !== group
+                    ? device.device
+                    : appleDeviceLabel(group);
+                const checked = entries.filter((i) =>
+                  selected.includes(i.id),
+                ).length;
+                return (
+                  <Stack key={group} gap="sm">
+                    <Checkbox
+                      label={label}
+                      styles={{ label: { overflowWrap: "anywhere" } }}
+                      checked={checked === entries.length}
+                      indeterminate={checked > 0 && checked < entries.length}
+                      onChange={(e) =>
+                        toggle(
+                          entries.map((i) => i.id),
+                          e.currentTarget.checked,
+                        )
+                      }
+                    />
+                    {renderItems(entries)}
+                  </Stack>
+                );
+              })
+            : renderItems(items)}
         </Stack>
       )}
-    </Stack>
+    </Paper>
   );
 }
 export function TranslationDialog({
@@ -167,7 +204,9 @@ export function TranslationDialog({
   const filtered = options.filter((code) =>
     label(code).toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const selectedMatches = filtered.filter((code) => targets.includes(code)).length;
+  const selectedMatches = filtered.filter((code) =>
+    targets.includes(code),
+  ).length;
   function toggle(ids: string[], checked: boolean) {
     setSelected((prev) =>
       checked
@@ -214,7 +253,7 @@ export function TranslationDialog({
       onClose={() => {
         if (!busy) close();
       }}
-      size="md"
+      size={step === 2 ? "58rem" : "md"}
       title={(mode === "add" ? "添加语言" : "翻译草稿") + " · " + step + "/2"}
     >
       <Stack>
@@ -230,8 +269,12 @@ export function TranslationDialog({
             <Checkbox
               label={query.trim() ? "全选搜索结果" : "全选"}
               disabled={!filtered.length}
-              checked={filtered.length > 0 && selectedMatches === filtered.length}
-              indeterminate={selectedMatches > 0 && selectedMatches < filtered.length}
+              checked={
+                filtered.length > 0 && selectedMatches === filtered.length
+              }
+              indeterminate={
+                selectedMatches > 0 && selectedMatches < filtered.length
+              }
               onChange={(event) => {
                 const checked = event.currentTarget.checked;
                 setTargets((current) =>
@@ -280,7 +323,23 @@ export function TranslationDialog({
           </>
         ) : (
           <>
-            <Text size="sm">目标语言 · {targets.map(label).join("、")}</Text>
+            <Stack gap={6}>
+              <Text size="sm" fw={600}>
+                目标语言（{targets.length}）
+              </Text>
+              <Group gap={6} mah="18dvh" style={{ overflowY: "auto" }}>
+                {targets.map((code) => (
+                  <Text
+                    key={code}
+                    component="span"
+                    size="xs"
+                    className="translation-language"
+                  >
+                    {label(code)}
+                  </Text>
+                ))}
+              </Group>
+            </Stack>
             {mode === "add" && (
               <SegmentedControl
                 value={method}
