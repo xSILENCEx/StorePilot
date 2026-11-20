@@ -1,15 +1,18 @@
 "use client";
 import { useState } from "react";
 import {
-  Button,
+  ActionIcon,
+  UnstyledButton,
+  Modal,
+  Loader,
   FileButton,
-  Group,
   Paper,
   SimpleGrid,
   Stack,
   Text,
   Title,
 } from "@mantine/core";
+import { ImagePlus, Pencil } from "lucide-react";
 import { notifications } from "@mantine/notifications";
 import {
   graphicLabels,
@@ -28,14 +31,9 @@ export function StoreGraphicsEditor({
   updateDraft: (fn: (current: Draft) => Partial<Draft>) => void;
 }) {
   const [uploading, setUploading] = useState<GraphicType | null>(null);
-  function setGraphic(type: GraphicType, url?: string) {
-    updateDraft((current) => {
-      const graphics = { ...current.graphics };
-      if (url) graphics[type] = url;
-      else delete graphics[type];
-      return { graphics };
-    });
-  }
+  const [preview, setPreview] = useState<{ url: string; label: string } | null>(
+    null,
+  );
   async function upload(type: GraphicType, file: File | null) {
     if (!file) return;
     setUploading(type);
@@ -48,7 +46,9 @@ export function StoreGraphicsEditor({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "上传失败");
-      setGraphic(type, result.url);
+      updateDraft((current) => ({
+        graphics: { ...current.graphics, [type]: result.url },
+      }));
     } catch (error) {
       notifications.show({
         color: "red",
@@ -65,53 +65,78 @@ export function StoreGraphicsEditor({
           商店图片资源
         </Title>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          {graphicTypes.map((type) => (
-            <Stack key={type} gap="xs">
-              <Text fw={550}>{graphicLabels[type]}</Text>
-              {draft.graphics?.[type] && (
-                <img
-                  src={draft.graphics[type]}
-                  alt={graphicLabels[type]}
-                  style={{
-                    maxWidth: "100%",
-                    maxHeight: 140,
-                    objectFit: "contain",
-                    alignSelf: "start",
-                  }}
-                />
-              )}
-              <Group gap="xs">
-                <FileButton
-                  accept="image/png,image/jpeg"
-                  onChange={(file) => void upload(type, file)}
-                >
-                  {(props) => (
-                    <Button
-                      {...props}
-                      size="xs"
-                      variant="light"
-                      loading={uploading === type}
-                      disabled={!enabled || uploading !== null}
+          {graphicTypes.map((type) => {
+            const url = draft.graphics?.[type];
+            const label = graphicLabels[type];
+            return (
+              <Stack key={type} gap="xs">
+                <Text fw={550}>{label}</Text>
+                <div className="graphic-slot">
+                  {url && (
+                    <UnstyledButton
+                      className="graphic-preview"
+                      aria-label={`预览${label}`}
+                      onClick={() => setPreview({ url, label })}
                     >
-                      {draft.graphics?.[type] ? "替换" : "上传"}
-                    </Button>
+                      <img src={url} alt={label} />
+                    </UnstyledButton>
                   )}
-                </FileButton>
-                {draft.graphics?.[type] && (
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    disabled={!enabled || uploading !== null}
-                    onClick={() => setGraphic(type)}
+                  <FileButton
+                    accept="image/png,image/jpeg"
+                    onChange={(file) => void upload(type, file)}
                   >
-                    移除
-                  </Button>
-                )}
-              </Group>
-            </Stack>
-          ))}
+                    {(props) =>
+                      url ? (
+                        <ActionIcon
+                          {...props}
+                          className="graphic-edit"
+                          variant="white"
+                          color="dark"
+                          size="md"
+                          loading={uploading === type}
+                          disabled={!enabled || uploading !== null}
+                          aria-label={`替换${label}`}
+                          title={`替换${label}`}
+                        >
+                          <Pencil size={15} />
+                        </ActionIcon>
+                      ) : (
+                        <UnstyledButton
+                          {...props}
+                          className="graphic-add"
+                          data-kind={type}
+                          disabled={!enabled || uploading !== null}
+                        >
+                          {uploading === type ? (
+                            <Loader size="sm" />
+                          ) : (
+                            <ImagePlus size={20} />
+                          )}{" "}
+                          添加{label}
+                        </UnstyledButton>
+                      )
+                    }
+                  </FileButton>
+                </div>
+              </Stack>
+            );
+          })}
         </SimpleGrid>
       </Stack>
+      <Modal
+        opened={!!preview}
+        onClose={() => setPreview(null)}
+        title={preview && `${preview.label}预览`}
+        size="lg"
+      >
+        {preview && (
+          <img
+            className="image-preview"
+            src={preview.url}
+            alt={preview.label}
+          />
+        )}
+      </Modal>
     </Paper>
   );
 }

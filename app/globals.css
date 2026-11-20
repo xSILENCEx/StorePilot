@@ -288,3 +288,41 @@ a {
   flex-shrink: 0;
   text-align: start;
 }
+
+.graphic-slot {
+  position: relative;
+  align-self: flex-start;
+  max-width: 100%;
+}
+.graphic-preview, .graphic-preview img {
+  display: block;
+  max-width: 100%;
+}
+.graphic-preview { cursor: zoom-in; }
+.graphic-preview img { max-height: 140px; }
+.graphic-slot .graphic-edit {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  box-shadow: 0 1px 5px #0003;
+}
+@media (hover: hover) {
+  .graphic-slot:not(:hover):not(:focus-within) .graphic-edit:not([data-loading]) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+.graphic-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 140px;
+  width: 140px;
+  max-width: 100%;
+  border: 1px dashed var(--mantine-color-gray-4);
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-dimmed);
+}
+.graphic-add[data-kind="featureGraphic"] { width: 287px; }
