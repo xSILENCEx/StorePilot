@@ -14,7 +14,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { appleDeviceLabel } from "../lib/apple-sync-model";
 import { notifications } from "@mantine/notifications";
 import type { StoreApp, Platform } from "../lib/model";
@@ -63,6 +63,7 @@ function SelectionGroup({
               <Group gap="xs" wrap="nowrap">
                 {(item.kind === "graphic" || item.kind === "screenshot") && (
                   <img
+                    loading="lazy"
                     src={item.value}
                     alt=""
                     width={44}
@@ -107,44 +108,50 @@ function SelectionGroup({
               <Text size="xs" c="dimmed">
                 {count} / {items.length}
               </Text>
-              {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <ChevronRight
+                className="translation-chevron"
+                size={16}
+                aria-hidden
+              />
             </Group>
           </Group>
         </UnstyledButton>
       </Group>
-      {open && (
-        <Stack className="translation-module-body" gap="md">
-          {devices
-            ? [...groups].map(([group, entries]) => {
-                const device = entries[0];
-                const label =
-                  device.kind === "screenshot" && device.device !== group
-                    ? device.device
-                    : appleDeviceLabel(group);
-                const checked = entries.filter((i) =>
-                  selected.includes(i.id),
-                ).length;
-                return (
-                  <Stack key={group} gap="sm">
-                    <Checkbox
-                      label={label}
-                      styles={{ label: { overflowWrap: "anywhere" } }}
-                      checked={checked === entries.length}
-                      indeterminate={checked > 0 && checked < entries.length}
-                      onChange={(e) =>
-                        toggle(
-                          entries.map((i) => i.id),
-                          e.currentTarget.checked,
-                        )
-                      }
-                    />
-                    {renderItems(entries)}
-                  </Stack>
-                );
-              })
-            : renderItems(items)}
-        </Stack>
-      )}
+      <div className="translation-collapse" data-open={open} inert={!open}>
+        <div className="translation-clip">
+          <Stack className="translation-module-body" gap="md">
+            {devices
+              ? [...groups].map(([group, entries]) => {
+                  const device = entries[0];
+                  const label =
+                    device.kind === "screenshot" && device.device !== group
+                      ? device.device
+                      : appleDeviceLabel(group);
+                  const checked = entries.filter((i) =>
+                    selected.includes(i.id),
+                  ).length;
+                  return (
+                    <Stack key={group} gap="sm">
+                      <Checkbox
+                        label={label}
+                        styles={{ label: { overflowWrap: "anywhere" } }}
+                        checked={checked === entries.length}
+                        indeterminate={checked > 0 && checked < entries.length}
+                        onChange={(e) =>
+                          toggle(
+                            entries.map((i) => i.id),
+                            e.currentTarget.checked,
+                          )
+                        }
+                      />
+                      {renderItems(entries)}
+                    </Stack>
+                  );
+                })
+              : renderItems(items)}
+          </Stack>
+        </div>
+      </div>
     </Paper>
   );
 }

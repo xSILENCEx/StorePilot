@@ -334,3 +334,17 @@ a {
   background: var(--mantine-color-gray-1);
   border-radius: 4px;
 }
+
+.translation-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 180ms ease-in-out;
+}
+.translation-collapse[data-open="true"] { grid-template-rows: 1fr; }
+.translation-clip { min-height: 0; overflow: hidden; }
+.translation-chevron { transition: transform 180ms ease-in-out; }
+[aria-expanded="true"] .translation-chevron { transform: rotate(90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .translation-collapse, .translation-chevron { transition: none; }
+}
