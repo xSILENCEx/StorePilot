@@ -29,6 +29,19 @@ const imageList = z.object({
     .default([]),
 });
 
+// Play returns a preview URL. Request the full-size graphic from Google's image CDN.
+function graphicSourceUrl(raw: string) {
+  const url = new URL(raw);
+  if (
+    url.protocol === "https:" &&
+    url.hostname.endsWith(".googleusercontent.com")
+  ) {
+    url.pathname = url.pathname.replace(/=(?:s|w|h)\d+[\w-]*$/, "") + "=s0";
+    return url.href;
+  }
+  return raw;
+}
+
 export async function readGoogleSnapshot(
   config: { fields: unknown; secret: string },
   fetcher = fetch,
@@ -109,7 +122,9 @@ export async function readGoogleSnapshot(
             width: 0,
             height: 0,
             state: "available",
-            sourceUrl: image.url,
+            sourceUrl: Object.hasOwn(googleScreenshotDevices, deviceType)
+              ? image.url
+              : graphicSourceUrl(image.url),
             url: null,
           };
           if (Object.hasOwn(googleScreenshotDevices, deviceType))

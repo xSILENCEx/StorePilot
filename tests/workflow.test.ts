@@ -695,7 +695,8 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
               images: [
                 {
                   id: "graphic",
-                  url: "https://example.com" + new URL(url).pathname,
+                  url:
+                    "https://lh3.googleusercontent.com" + new URL(url).pathname,
                 },
               ],
             });
@@ -731,6 +732,13 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
           assert.match(state.snapshot.icon.url, /^\/api\/assets\//);
           assert.equal(state.snapshot.icon.url, entry.graphics.icon.url);
           assert.ok(entry.graphics.featureGraphic.url);
+          assert.ok(entry.graphics.featureGraphic.sourceUrl.endsWith("=s0"));
+          const workspace = await (await getApps(request("/api/apps"))).json();
+          assert.equal(
+            workspace.apps[0].platformIcons.google,
+            state.snapshot.icon.url,
+          );
+          assert.ok(workspace.apps[0].platformIcons.apple);
           assert.equal(entry.screenshots.length, 1);
           assert.equal(entry.draft.subtitle, "Short");
           assert.equal(entry.draft.video, "https://youtu.be/example");

@@ -60,7 +60,9 @@ export const appSchema = z
     "Google Play 每个设备组最多 8 张截图",
   )
   .refine((a) => a.apple.trim() || a.google.trim(), "至少启用一个平台");
-export type StoreApp = z.infer<typeof appSchema>;
+export type StoreApp = z.infer<typeof appSchema> & {
+  readonly platformIcons?: Partial<Record<Platform, string>>;
+};
 export const workspaceSchema = z
   .object({
     revision: z.number().int().nonnegative(),
