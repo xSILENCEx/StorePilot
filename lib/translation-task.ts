@@ -158,11 +158,12 @@ async function translateImage(
     }
   }
   if (!fitsOriginal) {
-    bytes = await enlargeTranslation(bytes, width, height);
+    const enhance = job.input.enhance === true;
+    bytes = await enlargeTranslation(bytes, width, height, enhance);
     logJob(
       job.id,
       "resize",
-      `${item.label}：${size.width}×${size.height} → ${width}×${height}，等比复制像素并补齐边缘`,
+      `${item.label}：${size.width}×${size.height} → ${width}×${height}，${enhance ? "waifu2x 超分辨率适配" : "等比复制像素并补齐边缘"}`,
     );
   }
   if (targetSpec) bytes = await prepareStoreImage(bytes, targetSpec, catalog);

@@ -16,13 +16,22 @@ const input = z.object({
   source: z.string(),
   targets: z.array(z.string()).min(1).max(150),
   selected: z.array(z.string()).min(1),
+  enhance: z.boolean().default(false),
   revision: z.number().int(),
 });
 export async function POST(request: Request) {
   try {
     await authorize(request);
-    const { appId, platform, mode, source, targets, selected, revision } =
-      input.parse(await request.json());
+    const {
+      appId,
+      platform,
+      mode,
+      source,
+      targets,
+      selected,
+      revision,
+      enhance,
+    } = input.parse(await request.json());
     const configs = {
       text: await readConfig("text"),
       image: await readConfig("image"),
@@ -92,6 +101,7 @@ export async function POST(request: Request) {
               platform,
               kind: "translate",
               input: {
+                enhance,
                 source,
                 target,
                 items,

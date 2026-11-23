@@ -129,3 +129,9 @@ JSON 导出仅包含草稿及素材引用，不是完整备份。`data/` 和本�
 - `db/schema.sql`：全新安装的业务表定义；登录表由 Better Auth 初始化。
 - `scripts/`：初始化、管理员、Worker 和后台进程管理。
 - `tests/`：输入边界、API 适配器及隔离工作流测试。
+
+### 翻译图片的可选超分辨率
+
+在打包机将 [waifu2x-ncnn-vulkan 20250915](https://github.com/nihui/waifu2x-ncnn-vulkan/releases/tag/20250915) 的 macOS 发布包解压至项目的 `data/tools/`。默认目录为 `data/tools/waifu2x-ncnn-vulkan-20250915-macos/`，保留可执行文件和同级的 `models-cunet/`。其他安装位置通过 Worker 环境变量 `STOREPILOT_WAIFU2X_DIR` 指定。该 macOS ZIP 的 SHA-256 为 `a5b58b239eb3aa030db5464f6759637fe412d8c07891a4346ea57f708b514d42`。
+
+翻译设置中勾选超分辨率后，尺寸不足的图片使用打包机 GPU 做 2 倍放大，关闭降噪，再适配商店画布并编码为 PNG。

@@ -196,6 +196,7 @@ export function TranslationDialog({
   );
   const [targets, setTargets] = useState<string[]>([]);
   const [step, setStep] = useState(1);
+  const [enhance, setEnhance] = useState(false);
   const [method, setMethod] = useState("ai");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -239,6 +240,7 @@ export function TranslationDialog({
           targets,
           mode,
           selected,
+          enhance: imageCount > 0 && enhance,
           revision,
         }),
       });
@@ -392,6 +394,14 @@ export function TranslationDialog({
                   <Text size="sm" c="dimmed">
                     来源草稿没有可翻译内容。
                   </Text>
+                )}
+                {imageCount > 0 && (
+                  <Checkbox
+                    label="尺寸不足时使用 waifu2x 超分辨率"
+                    description="平滑放大边缘，细小文字可能发生变化。"
+                    checked={enhance}
+                    onChange={(e) => setEnhance(e.currentTarget.checked)}
+                  />
                 )}
                 <Text size="sm" c="dimmed">
                   {source} → {targets.length} 种语言，每种处理 {selected.length}{" "}
