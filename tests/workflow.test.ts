@@ -1158,6 +1158,24 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         );
       },
     );
+    await t.test(
+      "两个商店的主语言无法通过保存工作区删除，其他语言可删除",
+      async () => {
+        for (const platform of ["apple", "google"]) {
+          const row = db().select().from(workspaces).get()!;
+          delete row.apps[0].drafts[platform + ":en-US"];
+          const response = await saveApps(request("/api/apps", "PUT", row));
+          assert.equal(response.status, 409);
+          assert.match((await response.json()).error, /商店主语言/);
+        }
+        const row = db().select().from(workspaces).get()!;
+        delete row.apps[0].drafts["apple:en-AU"];
+        assert.equal(
+          (await saveApps(request("/api/apps", "PUT", row))).status,
+          200,
+        );
+      },
+    );
     sqlite().pragma("integrity_check");
   } finally {
     globalThis.fetch = originalFetch;

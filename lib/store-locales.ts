@@ -152,6 +152,9 @@ function canonical(code: string) {
     return code.toLowerCase();
   }
 }
+export function isPrimaryLocale(code: string, primary?: string) {
+  return !!primary && canonical(code) === canonical(primary);
+}
 export function availableStoreLocales(platform: Platform, existing: string[]) {
   const used = new Set(existing.map(canonical));
   return codes[platform]

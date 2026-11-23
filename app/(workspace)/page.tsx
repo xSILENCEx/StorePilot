@@ -36,7 +36,10 @@ import {
 } from "lucide-react";
 import { useWorkspaceNavigation } from "../../components/workspace-shell";
 import type { DeviceGroup } from "../../lib/screenshot-groups";
-import { availableStoreLocales } from "../../lib/store-locales";
+import {
+  availableStoreLocales,
+  isPrimaryLocale,
+} from "../../lib/store-locales";
 import { TranslationDialog } from "../../components/translation-dialog";
 import { StoreGraphicsEditor } from "../../components/store-graphics-editor";
 import { ScreenshotList } from "../../components/screenshot-list";
@@ -69,7 +72,10 @@ export default function Home() {
   const [languageModal, setLanguageModal] = useState<"add" | "update" | null>(
     null,
   );
-  const [primaryLocale, setPrimaryLocale] = useState<string>();
+  const [primary, setPrimaryLocale] = useState<{
+    scope: string;
+    locale?: string;
+  }>();
   const [deleteLanguage, setDeleteLanguage] = useState(false);
   const [validating, setValidating] = useState(false);
   const [connection, setConnection] = useState<{
@@ -79,6 +85,11 @@ export default function Home() {
     verified: boolean;
   } | null>(null);
   const app = apps.find((a) => a.id === selected);
+  const primaryLoaded =
+    !!app &&
+    primary?.scope === JSON.stringify([app.id, platform, app[platform]]);
+  const primaryLocale = primaryLoaded ? primary?.locale : undefined;
+  const protectedLocale = isPrimaryLocale(locale, primaryLocale);
   const draftKey = `${platform}:${locale}`;
   const draft = app?.drafts[draftKey] ?? empty();
   const locales = app
@@ -574,8 +585,17 @@ export default function Home() {
                         variant="subtle"
                         color="gray"
                         aria-label="删除当前语言"
-                        title="删除当前语言"
-                        disabled={!editable || locales.length < 2}
+                        title={
+                          protectedLocale
+                            ? "商店主语言不可删除"
+                            : "删除当前语言"
+                        }
+                        disabled={
+                          !editable ||
+                          !primaryLoaded ||
+                          protectedLocale ||
+                          locales.length < 2
+                        }
                         onClick={() => setDeleteLanguage(true)}
                       >
                         <Trash2 size={15} />
@@ -588,7 +608,14 @@ export default function Home() {
                         key={code}
                         variant={locale === code ? "light" : "subtle"}
                         color={locale === code ? "blue" : "gray"}
-                        justify="start"
+                        justify="space-between"
+                        rightSection={
+                          isPrimaryLocale(code, primaryLocale) ? (
+                            <Badge size="xs" variant="light">
+                              主语言
+                            </Badge>
+                          ) : undefined
+                        }
                         aria-pressed={locale === code}
                         onClick={() => setLocale(code)}
                       >
@@ -868,8 +895,15 @@ export default function Home() {
           </Button>
           <Button
             color="red"
+            disabled={!primaryLoaded || protectedLocale || locales.length < 2}
             onClick={() => {
-              if (!app) return;
+              if (
+                !app ||
+                !primaryLoaded ||
+                protectedLocale ||
+                locales.length < 2
+              )
+                return;
               persist((current) =>
                 current.map((a) => {
                   if (a.id !== app.id) return a;

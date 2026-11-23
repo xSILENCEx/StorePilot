@@ -62,7 +62,7 @@ export function StoreSyncPanel({
   platform: Platform;
   locale: string;
   enabled: boolean;
-  onPrimary: (locale?: string) => void;
+  onPrimary: (value: { scope: string; locale?: string }) => void;
   onCatalog: (catalog: AppleSnapshot["deviceGroups"]) => void;
   onImport: (
     snapshot: AppleSnapshot | GoogleSnapshot,
@@ -100,13 +100,18 @@ export function StoreSyncPanel({
         if (!r.ok) throw new Error(data.error);
         if (!controller.signal.aborted) {
           setState(data);
-          onPrimary(
-            data.stale
-              ? undefined
-              : apple
-                ? data.snapshot?.metadata?.primaryLocale
-                : data.snapshot?.details?.defaultLanguage,
-          );
+          const identifier = apple
+            ? data.snapshot?.target?.bundleId
+            : data.snapshot?.packageName;
+          onPrimary({
+            scope: JSON.stringify([app.id, platform, app[platform]]),
+            locale:
+              identifier === app[platform]
+                ? apple
+                  ? data.snapshot?.metadata?.primaryLocale
+                  : data.snapshot?.details?.defaultLanguage
+                : undefined,
+          });
           if (apple)
             onCatalog(data.stale ? undefined : data.snapshot?.deviceGroups);
         }
@@ -115,14 +120,23 @@ export function StoreSyncPanel({
           setError(e instanceof Error ? e.message : "读取商店资料失败");
       }
     };
-    onPrimary(undefined);
     void refresh();
     const timer = opened ? setInterval(() => void refresh(), 3000) : undefined;
     return () => {
       controller.abort();
       clearInterval(timer);
     };
-  }, [app.id, opened, onCatalog, onPrimary, endpoint, apple]);
+  }, [
+    app.id,
+    app.apple,
+    app.google,
+    platform,
+    opened,
+    onCatalog,
+    onPrimary,
+    endpoint,
+    apple,
+  ]);
   const pending =
     busy || ["queued", "running"].includes(state?.job?.status ?? "");
   const snapshot = state?.snapshot;

@@ -1,5 +1,5 @@
 import { draftAssetUrls } from "../../../lib/screenshot-groups";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../lib/db";
 import {
   workspaces,
@@ -8,6 +8,7 @@ import {
   googleSnapshots,
 } from "../../../lib/schema";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
+import { isPrimaryLocale } from "../../../lib/store-locales";
 import { workspaceSchema } from "../../../lib/model";
 export async function GET(request: Request) {
   try {
@@ -95,20 +96,60 @@ export async function PUT(request: Request) {
       if (found.length !== ids.length)
         throw new HttpError(400, "草稿包含不存在的素材");
     }
-    const [row] = await db()
-      .update(workspaces)
-      .set({
-        apps: value.apps,
-        revision: value.revision + 1,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(workspaces.id, "default"),
-          eq(workspaces.revision, value.revision),
-        ),
-      )
-      .returning();
+    const row = db().transaction(
+      (tx) => {
+        const before = tx
+          .select()
+          .from(workspaces)
+          .where(eq(workspaces.id, "default"))
+          .get();
+        if (before?.revision !== value.revision) return;
+        for (const app of value.apps) {
+          const previous = before.apps.find((a) => a.id === app.id);
+          if (!previous) continue;
+          for (const platform of ["apple", "google"] as const) {
+            if (!app[platform] || app[platform] !== previous[platform])
+              continue;
+            const prefix = platform + ":";
+            const removed = Object.keys(previous.drafts).filter(
+              (key) =>
+                key.startsWith(prefix) && !Object.hasOwn(app.drafts, key),
+            );
+            if (!removed.length) continue;
+            const table =
+              platform === "apple" ? storeSnapshots : googleSnapshots;
+            const snapshot = tx
+              .select()
+              .from(table)
+              .where(eq(table.app_id, app.id))
+              .get()?.current_snapshot;
+            if (!snapshot) continue;
+            const [identifier, primary] =
+              "packageName" in snapshot
+                ? [snapshot.packageName, snapshot.details?.defaultLanguage]
+                : [snapshot.target.bundleId, snapshot.metadata.primaryLocale];
+            if (
+              identifier === app[platform] &&
+              removed.some((key) =>
+                isPrimaryLocale(key.slice(prefix.length), primary),
+              )
+            )
+              throw new HttpError(409, "商店主语言 " + primary + " 不可删除");
+          }
+        }
+        return tx
+          .update(workspaces)
+          .set({
+            apps: value.apps,
+            revision: value.revision + 1,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(workspaces.id, "default"))
+          .returning()
+          .get();
+      },
+      { behavior: "immediate" },
+    );
     if (!row)
       throw new HttpError(
         409,
