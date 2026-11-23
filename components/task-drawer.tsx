@@ -39,6 +39,7 @@ const statusColors: Record<string, string> = {
 const kinds: Record<string, string> = {
   translate: "草稿翻译",
   generate_image: "图片生成",
+  push_store: "商店资料推送",
   pull_google: "Google Play 商店资料同步",
   pull_apple: "Apple 商店资料同步",
   verify_connection: "连接验证",

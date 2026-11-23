@@ -40,6 +40,7 @@ import { availableStoreLocales } from "../../lib/store-locales";
 import { TranslationDialog } from "../../components/translation-dialog";
 import { StoreGraphicsEditor } from "../../components/store-graphics-editor";
 import { ScreenshotList } from "../../components/screenshot-list";
+import { StorePushButton } from "../../components/store-push-button";
 import { StoreSyncPanel } from "../../components/store-sync-panel";
 import { overwriteStoreDrafts } from "../../lib/apple-sync-model";
 import { useWorkspace } from "../../lib/use-workspace";
@@ -767,11 +768,14 @@ export default function Home() {
                         >
                           校验草稿
                         </Button>
-                        <Tooltip label="商店推送尚未接入">
-                          <span>
-                            <Button disabled>推送到商店</Button>
-                          </span>
-                        </Tooltip>
+                        <StorePushButton
+                          key={app.id + platform + locale}
+                          app={app}
+                          platform={platform}
+                          locale={locale}
+                          revision={revision}
+                          enabled={saved && !blocked && !!connectionConfigured}
+                        />
                       </Group>
                     </Group>
                   </Paper>

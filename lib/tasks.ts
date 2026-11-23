@@ -1,3 +1,4 @@
+import { pushStoreJob } from "./push-task";
 import { translateJob } from "./translation-task";
 import { draftAssetUrls } from "./screenshot-groups";
 import sharp from "sharp";
@@ -18,6 +19,8 @@ export async function executeJob(job: Job) {
         return await generateImageTask(job);
       case "verify_connection":
         return await verifyConnectionTask(job);
+      case "push_store":
+        return await pushStoreJob(job);
       case "pull_google":
         return await pullGoogleTask(job);
       case "pull_apple":

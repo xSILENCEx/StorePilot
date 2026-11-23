@@ -70,6 +70,12 @@ export async function recoverJobs() {
       });
       continue;
     }
+    if (job.kind === "push_store") {
+      finishJob(job.id, "uncertain", {
+        error: "推送中断，请先同步商店资料核对已写入的内容。",
+      });
+      continue;
+    }
     if (job.kind === "pull_google") {
       const message = "同步中断，请检查临时 edit 后重新同步。";
       finishJob(job.id, "uncertain", { error: message });

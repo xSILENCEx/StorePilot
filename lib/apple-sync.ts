@@ -20,11 +20,7 @@ const resource = z.object({
 });
 type Resource = z.infer<typeof resource>;
 const base = "https://api.appstoreconnect.apple.com";
-export async function readAppleSnapshot(
-  config: { fields: unknown; secret: string },
-  appInfoId = "",
-  fetcher: typeof fetch = fetch,
-): Promise<AppleSnapshot> {
+export function appleToken(config: { fields: unknown; secret: string }) {
   const fields = configFields.apple.parse(config.fields);
   const now = Math.floor(Date.now() / 1000);
   const data = [
@@ -38,7 +34,16 @@ export async function readAppleSnapshot(
   ]
     .map((v) => Buffer.from(JSON.stringify(v)).toString("base64url"))
     .join(".");
-  const token = `${data}.${sign("sha256", Buffer.from(data), { key: config.secret, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
+  return `${data}.${sign("sha256", Buffer.from(data), { key: config.secret, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
+}
+export async function readAppleSnapshot(
+  config: { fields: unknown; secret: string },
+  appInfoId = "",
+  fetcher: typeof fetch = fetch,
+  forWrite = false,
+): Promise<AppleSnapshot> {
+  const fields = configFields.apple.parse(config.fields);
+  const token = appleToken(config);
   async function request(path: string): Promise<{
     data: unknown;
     included?: Resource[];
@@ -132,7 +137,21 @@ export async function readAppleSnapshot(
       v.attributes.platform === fields.appPlatform &&
       (!fields.version || v.attributes.versionString === fields.version),
   );
-  const version = selectVersion(versions, fields.version);
+  const editable = versions.filter((v) =>
+    [
+      "PREPARE_FOR_SUBMISSION",
+      "DEVELOPER_REJECTED",
+      "REJECTED",
+      "METADATA_REJECTED",
+    ].includes(state(v)),
+  );
+  if (forWrite && editable.length !== 1)
+    throw new AppleReadError(
+      "未找到唯一可编辑版本，请在 App Store Connect 创建版本或在连接设置指定版本号",
+    );
+  const version = forWrite
+    ? editable[0]
+    : selectVersion(versions, fields.version);
   const infos = await list(`/v1/apps/${fields.appId}/appInfos?limit=200`);
   const info = selectInfo(infos, version, appInfoId);
   const infoLocales = await list(

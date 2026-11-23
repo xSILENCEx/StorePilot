@@ -58,6 +58,7 @@ export const jobs = sqliteTable(
         "generate_image",
         "translate",
         "verify_connection",
+        "push_store",
         "pull_apple",
         "pull_google",
         "validate_draft",

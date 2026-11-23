@@ -37,6 +37,7 @@ import { checkpointReply } from "../lib/image-provider";
 import { GET as getApps, PUT as saveApps } from "../app/api/apps/route";
 import { GET as getImages, POST as generate } from "../app/api/images/route";
 import { DELETE as removeImage } from "../app/api/images/[id]/route";
+import { POST as pushStore } from "../app/api/store-push/route";
 import { POST as translate } from "../app/api/translations/route";
 import { POST as archive } from "../app/api/assets/archive/route";
 import { POST as uploadAsset } from "../app/api/assets/route";
@@ -1108,6 +1109,52 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
           db().select().from(workspaces).get()!.apps[0].drafts["google:de-DE"]
             .title,
           "Titel",
+        );
+      },
+    );
+    await t.test(
+      "推送固定已确认草稿，拒绝旧修订、并发重复推送，中断不自动重发",
+      async () => {
+        const row = db().select().from(workspaces).get()!;
+        const body = {
+          requestId: randomUUID(),
+          appId,
+          platform: "google",
+          sections: ["text"],
+          locales: ["en-US"],
+          revision: row.revision,
+        };
+        const send = (input: object) =>
+          pushStore(request("/api/store-push", "POST", input));
+        assert.equal(
+          (await send({ ...body, revision: row.revision - 1 })).status,
+          409,
+        );
+        assert.equal((await send(body)).status, 202);
+        assert.equal((await send(body)).status, 202);
+        assert.equal(
+          (await send({ ...body, requestId: randomUUID() })).status,
+          409,
+        );
+        const job = db()
+          .select()
+          .from(jobs)
+          .where(eq(jobs.id, body.requestId))
+          .get()!;
+        assert.equal(job.kind, "push_store");
+        assert.deepEqual(
+          (job.input.entries as { locale: string }[]).map((e) => e.locale),
+          ["en-US"],
+        );
+        db()
+          .update(jobs)
+          .set({ status: "running" })
+          .where(eq(jobs.id, job.id))
+          .run();
+        await recoverJobs();
+        assert.equal(
+          db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
+          "uncertain",
         );
       },
     );
