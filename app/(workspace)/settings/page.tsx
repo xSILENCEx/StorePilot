@@ -104,7 +104,13 @@ const definitions: Record<
         label: "API Base URL",
         hint: "填写 OpenAI 兼容 API 的基础地址（通常以 /v1 结尾），不包含 /chat/completions",
       },
-      { key: "model", label: "模型 ID" },
+      { key: "model", label: "首选模型 ID" },
+      { key: "fallbackModel", label: "备用模型 ID 1（可选）" },
+      {
+        key: "secondFallbackModel",
+        label: "备用模型 ID 2（可选）",
+        hint: "按填写顺序尝试，同一模型只调用一次。超时或 502 后切换可能产生额外计费。",
+      },
       { key: "timeoutSeconds", label: "超时（秒，10–600）", type: "number" },
     ],
     secret: "文本模型 API Key",
@@ -118,7 +124,13 @@ const definitions: Record<
         label: "API Base URL",
         hint: "填写 OpenAI 兼容 API 基础地址，不包含 /images/generations",
       },
-      { key: "model", label: "模型 ID" },
+      { key: "model", label: "首选模型 ID" },
+      { key: "fallbackModel", label: "备用模型 ID 1（可选）" },
+      {
+        key: "secondFallbackModel",
+        label: "备用模型 ID 2（可选）",
+        hint: "按填写顺序尝试，同一模型只调用一次。超时或 502 后切换可能产生额外计费。",
+      },
       { key: "timeoutSeconds", label: "超时（秒，10–600）", type: "number" },
     ],
     secret: "图像模型 API Key",
@@ -350,7 +362,13 @@ function ConfigForm({
                     key={f.key}
                     label={f.label}
                     description={f.hint}
-                    required={f.key !== "version"}
+                    required={
+                      ![
+                        "version",
+                        "fallbackModel",
+                        "secondFallbackModel",
+                      ].includes(f.key)
+                    }
                     value={fields[f.key] ?? ""}
                     disabled={!ready || busy}
                     onChange={(e) => change(f.key, e.currentTarget.value)}

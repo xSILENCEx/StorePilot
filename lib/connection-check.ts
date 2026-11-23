@@ -1,5 +1,5 @@
 import { sign } from "node:crypto";
-import { configFields, type ConfigScope } from "./config-model";
+import { orderedModels, configFields, type ConfigScope } from "./config-model";
 export type CheckResult = {
   status: "passed" | "partial" | "failed";
   message: string;
@@ -154,19 +154,17 @@ export async function checkConnection(
         "model_catalog",
         "服务未返回 OpenAI 兼容的模型目录（data 数组）。此验证不支持该目录格式，不能据此断定生成接口不可用。",
       );
-    if (
-      !response.data.some(
-        (item: unknown) =>
-          !!item &&
-          typeof item === "object" &&
-          "id" in item &&
-          item.id === fields.model,
-      )
-    )
+    const catalog = new Set(
+      response.data.map((item: { id?: unknown } | null) => item?.id),
+    );
+    const missing = orderedModels(fields).filter((id) => !catalog.has(id));
+    if (missing.length)
       return {
         status: "partial",
         message:
-          "模型目录可访问，但未找到配置的模型 ID；请核对名称。部分代理目录可能不完整，尚未验证生成调用。",
+          "模型目录中未找到：" +
+          missing.join("、") +
+          "。部分代理目录可能不完整。",
         checkedAt: new Date().toISOString(),
         steps,
       };

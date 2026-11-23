@@ -1,3 +1,4 @@
+import { withModelFallback } from "./model-fallback";
 import { enlargeTranslation } from "./translation-upscale";
 import type { AssetTarget } from "./asset-target";
 import { translationCanvas } from "./translation-image-size";
@@ -76,47 +77,49 @@ async function translateText(
       ? "Rewrite the previous out-of-range translations to meet every listed limit. Keep the essential meaning and allow margin below the maximum."
       : "",
   ].join(" ");
-  const response = await fetch(
-    fields.baseUrl.replace(/\/+$/, "") + "/chat/completions",
-    {
-      method: "POST",
-      redirect: "error",
-      signal: AbortSignal.timeout(fields.timeoutSeconds * 1000),
-      headers: {
-        Authorization: "Bearer " + secret,
-        "Content-Type": "application/json",
+  return withModelFallback(fields, job.id, async (modelId) => {
+    const response = await fetch(
+      fields.baseUrl.replace(/\/+$/, "") + "/chat/completions",
+      {
+        method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(fields.timeoutSeconds * 1000),
+        headers: {
+          Authorization: "Bearer " + secret,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: "system", content: instructions },
+            {
+              role: "user",
+              content: JSON.stringify({
+                source,
+                target,
+                fields: original,
+                previous,
+              }),
+            },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: fields.model,
-        messages: [
-          { role: "system", content: instructions },
-          {
-            role: "user",
-            content: JSON.stringify({
-              source,
-              target,
-              fields: original,
-              previous,
-            }),
-          },
-        ],
-      }),
-    },
-  );
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new TranslationError(
-      "文字模型请求失败（HTTP " + response.status + "）",
     );
-  }
-  const raw = await readLimited(response, 1024 * 1024);
-  let reply;
-  try {
-    reply = JSON.parse(raw.toString());
-  } catch {
-    throw new TranslationError("文字接口响应不是有效 JSON");
-  }
-  return parseTranslationReply(reply, Object.keys(original));
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new TranslationError(
+        "文字模型请求失败（HTTP " + response.status + "）",
+      );
+    }
+    const raw = await readLimited(response, 1024 * 1024);
+    let reply;
+    try {
+      reply = JSON.parse(raw.toString());
+    } catch {
+      throw new TranslationError("文字接口响应不是有效 JSON");
+    }
+    return parseTranslationReply(reply, Object.keys(original));
+  });
 }
 async function translateImage(
   job: Job,
@@ -128,19 +131,21 @@ async function translateImage(
   const buffer = await readFile(assetPath(item.value.split("/").at(-1)!));
   const meta = await sharp(buffer).metadata();
   const { width, height } = meta.autoOrient;
-  const canvas = translationCanvas(fields.model, width, height);
-  const reply = await callImageModel(
-    fields,
-    secret,
-    {
-      prompt: `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${canvas}.`,
-      modelSize: canvas,
-      quality: "auto",
-      references: [],
-    },
-    randomUUID(),
-    [{ buffer, mime: meta.format === "jpeg" ? "image/jpeg" : "image/png" }],
-  );
+  const reply = await withModelFallback(fields, job.id, async (modelId) => {
+    const canvas = translationCanvas(modelId, width, height);
+    return callImageModel(
+      { ...fields, model: modelId },
+      secret,
+      {
+        prompt: `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${canvas}.`,
+        modelSize: canvas,
+        quality: "auto",
+        references: [],
+      },
+      randomUUID(),
+      [{ buffer, mime: meta.format === "jpeg" ? "image/jpeg" : "image/png" }],
+    );
+  });
   const image = sharp(await replyBuffer(reply), { limitInputPixels: 40000000 });
   const size = (await image.metadata()).autoOrient;
   const closeRatio =

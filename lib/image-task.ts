@@ -1,3 +1,5 @@
+import { withModelFallback } from "./model-fallback";
+import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
@@ -30,7 +32,7 @@ export async function generateImageTask(job: Job) {
       if (config.revision !== job.input.configRevision)
         throw new ImageGenerationError("图像模型配置已变更，请重新生成");
       const fields = configFields.image.parse(config.fields);
-      const references = [];
+      const references: { buffer: Buffer; mime: string }[] = [];
       const screenshot = screenshots?.[Number(screenshotIndex)];
       for (const url of screenshot
         ? [screenshot, ...settings.references]
@@ -51,12 +53,14 @@ export async function generateImageTask(job: Job) {
         "model",
         references.length ? "调用图像编辑 API" : "调用图像生成 API",
       );
-      reply = await callImageModel(
-        fields,
-        config.secret,
-        settings,
-        job.id,
-        references,
+      reply = await withModelFallback(fields, job.id, (model, index) =>
+        callImageModel(
+          { ...fields, model },
+          config.secret,
+          settings,
+          index === 0 ? job.id : randomUUID(),
+          references,
+        ),
       );
       await checkpointReply(job.id, reply);
     }

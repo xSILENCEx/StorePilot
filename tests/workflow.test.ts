@@ -1046,6 +1046,71 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         "Stay active",
       );
     });
+    await t.test(
+      "文本和截图模型分别按优先级降级，成功后不再调用后续模型",
+      async () => {
+        for (const scope of ["text", "image"] as const) {
+          const config = await readConfig(scope);
+          await saveConfig(scope, undefined, config.revision, {
+            ...config.fields,
+            model: scope + "-1",
+            fallbackModel: scope + "-2",
+            secondFallbackModel: scope + "-3",
+          });
+        }
+        const row = db().select().from(workspaces).get()!;
+        const response = await translate(
+          request("/api/translations", "POST", {
+            appId,
+            platform: "google",
+            mode: "add",
+            source: "en-US",
+            targets: ["de-DE"],
+            selected: ["title", "graphic:icon"],
+            revision: row.revision,
+          }),
+        );
+        assert.equal(response.status, 202);
+        const id = (await response.json()).ids[0];
+        const calls: string[] = [];
+        const png = await sharp({
+          create: { width: 512, height: 512, channels: 3, background: "green" },
+        })
+          .png()
+          .toBuffer();
+        globalThis.fetch = async (_, init) => {
+          const model =
+            init?.body instanceof FormData
+              ? init.body.get("model")
+              : JSON.parse(String(init?.body)).model;
+          calls.push(String(model));
+          if (model === "text-2")
+            return Response.json({
+              choices: [{ message: { content: '{"title":"Titel"}' } }],
+            });
+          if (model === "image-3")
+            return Response.json({
+              data: [{ b64_json: png.toString("base64") }],
+            });
+          return new Response(null, { status: 502 });
+        };
+        await executeJob(
+          db().select().from(jobs).where(eq(jobs.id, id)).get()!,
+        );
+        assert.deepEqual(calls, [
+          "text-1",
+          "text-2",
+          "image-1",
+          "image-2",
+          "image-3",
+        ]);
+        assert.equal(
+          db().select().from(workspaces).get()!.apps[0].drafts["google:de-DE"]
+            .title,
+          "Titel",
+        );
+      },
+    );
     sqlite().pragma("integrity_check");
   } finally {
     globalThis.fetch = originalFetch;
