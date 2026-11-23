@@ -74,22 +74,48 @@ export const workspaceSchema = z
     (v) => new Set(v.apps.map((a) => a.id)).size === v.apps.length,
     "应用 ID 重复",
   );
+// App Store Connect app/platform-version information and Play Console listing limits.
+export function storeTextLimits(platform: Platform): Record<string, number> {
+  return platform === "apple"
+    ? {
+        title: 30,
+        subtitle: 30,
+        description: 4000,
+        keywords: 100,
+        promotionalText: 170,
+        whatsNew: 4000,
+      }
+    : { title: 30, subtitle: 80, description: 4000 };
+}
+export function fieldLengthIssue(
+  platform: Platform,
+  field: string,
+  text: string,
+) {
+  if (!text) return;
+  const limit = storeTextLimits(platform)[field];
+  if (limit === undefined) return;
+  const bytes = platform === "apple" && field === "keywords";
+  const length = bytes
+    ? new TextEncoder().encode(text).length
+    : Array.from(text).length;
+  if (length > limit)
+    return field + " 超过 " + limit + (bytes ? " 字节" : " 字符");
+  if (platform === "apple" && field === "title" && length < 2)
+    return "title 至少需要 2 字符";
+  if (
+    bytes &&
+    text.split(/[,，、]/u).some((term) => Array.from(term.trim()).length < 3)
+  )
+    return "keywords 每个关键词至少需要 3 字符";
+}
 export function validateDraft(platform: Platform, draft: Draft) {
-  const limits =
-    platform === "apple"
-      ? { title: 30, subtitle: 30, description: 4000, keywords: 100 }
-      : { title: 30, subtitle: 80, description: 4000 };
-  return Object.entries(limits).flatMap(([field, limit]) => {
-    const text =
-      draft[
-        field as keyof Omit<Draft, "images" | "screenshotGroups" | "graphics">
-      ] ?? "";
-    const length =
-      platform === "apple" && field === "keywords"
-        ? new TextEncoder().encode(text).length
-        : Array.from(text).length;
-    return length > limit
-      ? [`${field} 超过 ${limit}${field === "keywords" ? " 字节" : " 字符"}`]
-      : [];
+  return Object.keys(storeTextLimits(platform)).flatMap((field) => {
+    const issue = fieldLengthIssue(
+      platform,
+      field,
+      String(draft[field as keyof Draft] ?? ""),
+    );
+    return issue ? [issue] : [];
   });
 }

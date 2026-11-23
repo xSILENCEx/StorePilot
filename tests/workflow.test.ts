@@ -961,7 +961,11 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         const modelFetch = globalThis.fetch;
         globalThis.fetch = async (url, init) =>
           String(url).endsWith("/images/edits")
-            ? Response.json({ data: [{ b64_json: Buffer.from("invalid image").toString("base64") }] })
+            ? Response.json({
+                data: [
+                  { b64_json: Buffer.from("invalid image").toString("base64") },
+                ],
+              })
             : modelFetch(url, init);
         assert.equal(
           (await run((await invalidImage.json()).ids[0])).status,
@@ -988,6 +992,60 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         );
       },
     );
+    await t.test("Apple 副标题超限时只改写副标题，并再次校验长度", async () => {
+      const row = db().select().from(workspaces).get()!;
+      row.apps[0].drafts["apple:en-US"].subtitle = "Stay active";
+      assert.equal(
+        (await saveApps(request("/api/apps", "PUT", row))).status,
+        200,
+      );
+      const queued = await translate(
+        request("/api/translations", "POST", {
+          appId,
+          platform: "apple",
+          source: "en-US",
+          mode: "add",
+          targets: ["en-AU"],
+          selected: ["title", "subtitle"],
+          revision: row.revision + 1,
+        }),
+      );
+      assert.equal(queued.status, 202);
+      const id = (await queued.json()).ids[0];
+      let calls = 0;
+      globalThis.fetch = async (_, init) => {
+        const { messages } = JSON.parse(String(init?.body));
+        const { fields, previous } = JSON.parse(messages[1].content);
+        assert.match(messages[0].content, /subtitle: at most 30 characters/);
+        if (calls++ === 0) {
+          assert.match(messages[0].content, /title: 2 to 30 characters/);
+          return Response.json({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    title: fields.title,
+                    subtitle: "a".repeat(31),
+                  }),
+                },
+              },
+            ],
+          });
+        }
+        assert.deepEqual(Object.keys(fields), ["subtitle"]);
+        assert.equal(previous.subtitle.length, 31);
+        return Response.json({
+          choices: [{ message: { content: '{"subtitle":"Stay active"}' } }],
+        });
+      };
+      await executeJob(db().select().from(jobs).where(eq(jobs.id, id)).get()!);
+      assert.equal(calls, 2);
+      assert.equal(
+        db().select().from(workspaces).get()!.apps[0].drafts["apple:en-AU"]
+          .subtitle,
+        "Stay active",
+      );
+    });
     sqlite().pragma("integrity_check");
   } finally {
     globalThis.fetch = originalFetch;
