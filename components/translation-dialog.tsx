@@ -12,10 +12,13 @@ import {
   Select,
   Stack,
   Text,
-  TextInput,
 } from "@mantine/core";
 import { ChevronRight } from "lucide-react";
 import { appleDeviceLabel } from "../lib/apple-sync-model";
+import {
+  LanguageChecklist,
+  languageLabel as label,
+} from "./language-checklist";
 import { notifications } from "@mantine/notifications";
 import type { StoreApp, Platform } from "../lib/model";
 import { translationItems, type TranslationItem } from "../lib/translation";
@@ -169,14 +172,6 @@ export function TranslationDialog({
   const existing = Object.keys(app.drafts)
     .filter((k) => k.startsWith(platform + ":"))
     .map((k) => k.split(":")[1]);
-  const names = new Intl.DisplayNames(["zh-CN"], { type: "language" });
-  const label = (code: string) => {
-    try {
-      return (names.of(code) ?? code) + " · " + code;
-    } catch {
-      return code;
-    }
-  };
   const options =
     mode === "add"
       ? availableStoreLocales(platform, existing).map((l) => l.code)
@@ -209,12 +204,6 @@ export function TranslationDialog({
         (i.kind === "screenshot" || i.kind === "graphic"),
     ).length * targets.length;
   const sections = [...new Set(items.map((i) => i.section))];
-  const filtered = options.filter((code) =>
-    label(code).toLowerCase().includes(query.trim().toLowerCase()),
-  );
-  const selectedMatches = filtered.filter((code) =>
-    targets.includes(code),
-  ).length;
   function toggle(ids: string[], checked: boolean) {
     setSelected((prev) =>
       checked
@@ -268,52 +257,13 @@ export function TranslationDialog({
       <Stack>
         {step === 1 ? (
           <>
-            <Text fw={600}>选择目标语言</Text>
-            <TextInput
-              aria-label="搜索目标语言"
-              placeholder="搜索语言名称或代码"
-              value={query}
-              onChange={(e) => setQuery(e.currentTarget.value)}
+            <LanguageChecklist
+              options={options}
+              targets={targets}
+              setTargets={setTargets}
+              query={query}
+              setQuery={setQuery}
             />
-            <Checkbox
-              label={query.trim() ? "全选搜索结果" : "全选"}
-              disabled={!filtered.length}
-              checked={
-                filtered.length > 0 && selectedMatches === filtered.length
-              }
-              indeterminate={
-                selectedMatches > 0 && selectedMatches < filtered.length
-              }
-              onChange={(event) => {
-                const checked = event.currentTarget.checked;
-                setTargets((current) =>
-                  checked
-                    ? [...new Set([...current, ...filtered])]
-                    : current.filter((code) => !filtered.includes(code)),
-                );
-              }}
-            />
-            <Stack gap="sm" mah="48dvh" style={{ overflowY: "auto" }}>
-              {filtered.map((code) => (
-                <Checkbox
-                  key={code}
-                  label={label(code)}
-                  checked={targets.includes(code)}
-                  onChange={(e) =>
-                    setTargets(
-                      e.currentTarget.checked
-                        ? [...targets, code]
-                        : targets.filter((c) => c !== code),
-                    )
-                  }
-                />
-              ))}
-              {!filtered.length && (
-                <Text size="sm" c="dimmed">
-                  没有可选择的语言
-                </Text>
-              )}
-            </Stack>
             <Group justify="flex-end">
               <Button
                 disabled={!targets.length}

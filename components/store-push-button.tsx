@@ -6,10 +6,10 @@ import {
   Checkbox,
   Group,
   Modal,
-  MultiSelect,
   Stack,
   Text,
 } from "@mantine/core";
+import { LanguageChecklist } from "./language-checklist";
 import { notifications } from "@mantine/notifications";
 import { pushContent, type PushSections } from "../lib/push-plan";
 import type { StoreApp, Platform } from "../lib/model";
@@ -44,6 +44,8 @@ export function StorePushButton({
   revision: number;
   enabled: boolean;
 }) {
+  const [query, setQuery] = useState("");
+  const [step, setStep] = useState(1);
   const [opened, setOpened] = useState(false),
     [targets, setTargets] = useState<string[]>([]),
     [sections, setSections] = useState<PushSections>(["text"]),
@@ -98,6 +100,8 @@ export function StorePushButton({
       <Button
         disabled={!enabled}
         onClick={() => {
+          setStep(1);
+          setQuery("");
           setTargets([locale]);
           setSections(["text"]);
           setError("");
@@ -115,90 +119,107 @@ export function StorePushButton({
         }}
         title={
           "推送到 " +
-          (platform === "apple" ? "App Store Connect" : "Google Play")
+          (platform === "apple" ? "App Store Connect" : "Google Play") +
+          " · " +
+          step +
+          "/2"
         }
       >
         <Stack>
           <Text fw={600}>
             {app.name} · {app[platform]}
           </Text>
-          <MultiSelect
-            label="目标语言"
-            data={locales}
-            value={targets}
-            onChange={setTargets}
-            searchable
-            disabled={busy}
-          />
-          <Group>
-            {(Object.keys(labels) as PushSections)
-              .filter((s) => platform === "google" || s !== "graphics")
-              .map((s) => (
-                <Checkbox
-                  key={s}
-                  checked={sections.includes(s)}
-                  disabled={busy}
-                  label={labels[s]}
-                  onChange={(e) =>
-                    setSections(
-                      e.currentTarget.checked
-                        ? [...sections, s]
-                        : sections.filter((k) => k !== s),
-                    )
-                  }
-                />
-              ))}
-          </Group>
-          <Text size="sm">
-            仅写入下列非空字段。每个列出的图片组将按草稿顺序完整替换商店中的该组图片。
-          </Text>
-          {previews.map((p) => (
-            <Stack key={p.lang} gap={3}>
-              <Text size="sm" fw={600}>
-                {p.lang}
-              </Text>
+          {step === 1 ? (
+            <>
+              <LanguageChecklist
+                options={locales}
+                targets={targets}
+                setTargets={setTargets}
+                query={query}
+                setQuery={setQuery}
+              />
+              <Group justify="flex-end">
+                <Button
+                  disabled={!targets.length || !enabled}
+                  onClick={() => setStep(2)}
+                >
+                  下一步（{targets.length}）
+                </Button>
+              </Group>
+            </>
+          ) : (
+            <>
+              <Group>
+                {(Object.keys(labels) as PushSections)
+                  .filter((s) => platform === "google" || s !== "graphics")
+                  .map((s) => (
+                    <Checkbox
+                      key={s}
+                      checked={sections.includes(s)}
+                      disabled={busy}
+                      label={labels[s]}
+                      onChange={(e) =>
+                        setSections(
+                          e.currentTarget.checked
+                            ? [...sections, s]
+                            : sections.filter((k) => k !== s),
+                        )
+                      }
+                    />
+                  ))}
+              </Group>
               <Text size="sm">
-                {[
-                  ...Object.keys(p.fields).map((k) => fieldLabels[k]),
-                  ...Object.entries(p.groups).map(
-                    ([group, urls]) => group + "（" + urls.length + " 张）",
-                  ),
-                ].join("、")}
+                仅写入下列非空字段。每个列出的图片组将按草稿顺序完整替换商店中的该组图片。
               </Text>
-              {p.errors.map((err) => (
-                <Text size="sm" c="red" key={err}>
-                  {err}
-                </Text>
+              {previews.map((p) => (
+                <Stack key={p.lang} gap={3}>
+                  <Text size="sm" fw={600}>
+                    {p.lang}
+                  </Text>
+                  <Text size="sm">
+                    {[
+                      ...Object.keys(p.fields).map((k) => fieldLabels[k]),
+                      ...Object.entries(p.groups).map(
+                        ([group, urls]) => group + "（" + urls.length + " 张）",
+                      ),
+                    ].join("、")}
+                  </Text>
+                  {p.errors.map((err) => (
+                    <Text size="sm" c="red" key={err}>
+                      {err}
+                    </Text>
+                  ))}
+                </Stack>
               ))}
-            </Stack>
-          ))}
-          <Alert color="orange">
-            {platform === "apple"
-              ? "写入连接所指向的可编辑版本，不提交审核。Apple 分步保存，失败时可能已有部分内容生效。"
-              : "提交 Google Play edit，可能触发审核或发布。如已有变更在审，推送将停止。"}
-          </Alert>
-          {error && <Alert color="red">{error}</Alert>}
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              disabled={busy}
-              onClick={() => setOpened(false)}
-            >
-              取消
-            </Button>
-            <Button
-              loading={busy}
-              disabled={
-                !enabled ||
-                !targets.length ||
-                !sections.length ||
-                previews.some((p) => p.errors.length)
-              }
-              onClick={() => void submit()}
-            >
-              确认推送
-            </Button>
-          </Group>
+              <Alert color="orange">
+                {platform === "apple"
+                  ? "写入连接所指向的可编辑版本，不提交审核。Apple 分步保存，失败时可能已有部分内容生效。"
+                  : "提交 Google Play edit，可能触发审核或发布。如已有变更在审，推送将停止。"}
+              </Alert>
+              {error && <Alert color="red">{error}</Alert>}
+              <Group justify="flex-end">
+                <Button
+                  variant="default"
+                  disabled={busy}
+                  onClick={() => setStep(1)}
+                >
+                  上一步
+                </Button>
+                <Button
+                  loading={busy}
+                  disabled={
+                    !enabled ||
+                    !targets.length ||
+                    !sections.length ||
+                    previews.some((p) => p.errors.length)
+                  }
+                  onClick={() => void submit()}
+                >
+                  确认推送
+                </Button>
+              </Group>
+            </>
+          )}
         </Stack>
       </Modal>
     </>
