@@ -196,7 +196,7 @@ export function TranslationDialog({
   );
   const [targets, setTargets] = useState<string[]>([]);
   const [step, setStep] = useState(1);
-  const [enhance, setEnhance] = useState(false);
+  const [enhance, setEnhance] = useState(true);
   const [method, setMethod] = useState("ai");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
