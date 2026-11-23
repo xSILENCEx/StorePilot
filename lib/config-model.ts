@@ -24,8 +24,12 @@ export type ModelSlots = {
 export function orderedModels(fields: ModelSlots) {
   return [
     ...new Set(
-      [fields.model, fields.fallbackModel, fields.secondFallbackModel].filter(
-        (id): id is string => !!id,
+      [fields.model, fields.fallbackModel, fields.secondFallbackModel].flatMap(
+        (value) =>
+          (value ?? "")
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean),
       ),
     ),
   ];
@@ -33,12 +37,24 @@ export function orderedModels(fields: ModelSlots) {
 const modelSettings = z
   .object({
     baseUrl: endpoint,
-    model: z.string().trim().min(1).max(200),
+    model: z.string().trim().min(1),
     fallbackModel: z.string().trim().max(200).optional(),
     secondFallbackModel: z.string().trim().max(200).optional(),
     timeoutSeconds: z.number().int().min(10).max(600),
   })
-  .strict();
+  .strict()
+  .refine((fields) => {
+    const ids = orderedModels(fields);
+    return (
+      ids.length > 0 &&
+      ids.every((id) => id.length <= 200 && !/[，\r\n]/.test(id))
+    );
+  }, "请用英文逗号分隔模型 ID，每个 ID 最多 200 字符")
+  .transform((fields) => ({
+    baseUrl: fields.baseUrl,
+    model: orderedModels(fields).join(", "),
+    timeoutSeconds: fields.timeoutSeconds,
+  }));
 export const configFields = {
   apple: z
     .object({

@@ -59,7 +59,10 @@ export async function readConfig(scope: ConfigScope, appId?: string) {
   const verification =
     row?.verification?.revision === row?.revision ? row?.verification : null;
   return {
-    fields: row?.fields ?? {},
+    fields:
+      (scope === "text" || scope === "image") && row?.fields.model
+        ? configFields[scope].parse(row.fields)
+        : (row?.fields ?? {}),
     secretSaved: !!row?.secret,
     revision: row?.revision ?? 0,
     configured: !!row?.secret,

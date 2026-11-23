@@ -157,7 +157,20 @@ export async function checkConnection(
     const catalog = new Set(
       response.data.map((item: { id?: unknown } | null) => item?.id),
     );
-    const missing = orderedModels(fields).filter((id) => !catalog.has(id));
+    const missing: string[] = [];
+    for (const [index, id] of orderedModels(fields).entries()) {
+      const found = catalog.has(id);
+      await step(
+        "model_" + (index + 1),
+        index +
+          1 +
+          ". " +
+          id +
+          " · " +
+          (found ? "已在目录中找到" : "目录中未找到"),
+      );
+      if (!found) missing.push(id);
+    }
     if (missing.length)
       return {
         status: "partial",

@@ -70,3 +70,22 @@ test("Apple 官方样例 Issuer ID 不受 UUID variant 限制", () => {
     }).success,
   );
 });
+
+test("模型列表不限于三个，兼容旧配置、去重并保留顺序", () => {
+  const parsed = configFields.image.parse({
+    baseUrl: "https://example.com",
+    timeoutSeconds: 120,
+    model: "a, b, a, c",
+    fallbackModel: "d",
+    secondFallbackModel: "e",
+  });
+  assert.equal(parsed.model, "a, b, c, d, e");
+  assert.equal(
+    configFields.text.safeParse({ ...parsed, model: ", ," }).success,
+    false,
+  );
+  assert.equal(
+    configFields.text.safeParse({ ...parsed, model: "a，b" }).success,
+    false,
+  );
+});

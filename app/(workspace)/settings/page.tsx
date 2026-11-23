@@ -104,12 +104,10 @@ const definitions: Record<
         label: "API Base URL",
         hint: "填写 OpenAI 兼容 API 的基础地址（通常以 /v1 结尾），不包含 /chat/completions",
       },
-      { key: "model", label: "首选模型 ID" },
-      { key: "fallbackModel", label: "备用模型 ID 1（可选）" },
       {
-        key: "secondFallbackModel",
-        label: "备用模型 ID 2（可选）",
-        hint: "按填写顺序尝试，同一模型只调用一次。超时或 502 后切换可能产生额外计费。",
+        key: "model",
+        label: "模型 ID",
+        hint: "多个 ID 用英文逗号分隔，按从左到右的顺序验证和尝试。",
       },
       { key: "timeoutSeconds", label: "超时（秒，10–600）", type: "number" },
     ],
@@ -124,12 +122,10 @@ const definitions: Record<
         label: "API Base URL",
         hint: "填写 OpenAI 兼容 API 基础地址，不包含 /images/generations",
       },
-      { key: "model", label: "首选模型 ID" },
-      { key: "fallbackModel", label: "备用模型 ID 1（可选）" },
       {
-        key: "secondFallbackModel",
-        label: "备用模型 ID 2（可选）",
-        hint: "按填写顺序尝试，同一模型只调用一次。超时或 502 后切换可能产生额外计费。",
+        key: "model",
+        label: "模型 ID",
+        hint: "多个 ID 用英文逗号分隔，按从左到右的顺序验证和尝试。",
       },
       { key: "timeoutSeconds", label: "超时（秒，10–600）", type: "number" },
     ],
@@ -254,6 +250,11 @@ function ConfigForm({
       setDirty(false);
       setVerification(data.verification);
       onSaved();
+      if (scope === "text" || scope === "image") {
+        setFields({ ...defaults, ...data.fields });
+        await verify(false, data.revision);
+        return;
+      }
       notifications.show({
         title: "配置已保存",
         message: "可以继续验证连接。",
@@ -265,7 +266,7 @@ function ConfigForm({
       setBusy(false);
     }
   }
-  async function verify(verifyApplication = false) {
+  async function verify(verifyApplication = false, savedRevision = revision) {
     setBusy(true);
     setMessage("");
     setConfirmGoogle(false);
@@ -274,7 +275,7 @@ function ConfigForm({
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ revision, verifyApplication }),
+        body: JSON.stringify({ revision: savedRevision, verifyApplication }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
@@ -362,13 +363,7 @@ function ConfigForm({
                     key={f.key}
                     label={f.label}
                     description={f.hint}
-                    required={
-                      ![
-                        "version",
-                        "fallbackModel",
-                        "secondFallbackModel",
-                      ].includes(f.key)
-                    }
+                    required={f.key !== "version"}
                     value={fields[f.key] ?? ""}
                     disabled={!ready || busy}
                     onChange={(e) => change(f.key, e.currentTarget.value)}
