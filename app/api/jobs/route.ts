@@ -7,9 +7,14 @@ import { authorize, failure, HttpError, json } from "../../../lib/http";
 export async function GET(request: Request) {
   try {
     await authorize(request);
+    const appId = z
+      .uuid()
+      .nullable()
+      .parse(new URL(request.url).searchParams.get("appId"));
     const rows = db()
       .select()
       .from(jobs)
+      .where(appId ? eq(jobs.app_id, appId) : undefined)
       .orderBy(desc(jobs.created_at))
       .limit(30)
       .all();

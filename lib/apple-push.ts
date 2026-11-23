@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { appleToken, readAppleSnapshot } from "./apple-sync";
 import { storeRequest } from "./connection-check";
-import type { PushEntry, LoadAsset } from "./google-push";
+import type { PushEntry, LoadAsset } from "./push-plan";
 import { assertWorkerActive } from "./worker-context";
 const resource = z.object({
   id: z.string().min(1),

@@ -1,15 +1,12 @@
+import { createGoogleEdit, deleteGoogleEdit } from "./google-edit";
 import { z } from "zod";
 import {
   CheckError,
   googleAccessToken,
   storeRequest,
 } from "./connection-check";
-import type { PushContent } from "./push-plan";
+import type { PushEntry, LoadAsset } from "./push-plan";
 import { assertWorkerActive } from "./worker-context";
-export type PushEntry = PushContent & { locale: string };
-export type LoadAsset = (
-  url: string,
-) => Promise<{ bytes: Buffer; mime: string }>;
 export async function pushGoogle(
   packageName: string,
   secret: string,
@@ -19,19 +16,21 @@ export async function pushGoogle(
   fetcher = fetch,
 ) {
   const token = await googleAccessToken(secret, fetcher);
-  const base =
-    "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" +
-    encodeURIComponent(packageName) +
-    "/edits";
+  const headers = {
+    Authorization: "Bearer " + token,
+    "Content-Type": "application/json",
+  };
+  const request = (url: string, init: RequestInit, stage: string) => {
+    assertWorkerActive();
+    return storeRequest(fetcher, url, init, stage);
+  };
   async function send(
     url: string,
     method: string,
     body?: BodyInit,
     mime = "application/json",
   ) {
-    assertWorkerActive();
-    return storeRequest(
-      fetcher,
+    return request(
       url,
       {
         method,
@@ -41,8 +40,7 @@ export async function pushGoogle(
       "google_push",
     );
   }
-  const edit = await send(base, "POST", "{}");
-  const url = base + "/" + encodeURIComponent(z.string().min(1).parse(edit.id));
+  const { url, id } = await createGoogleEdit(packageName, headers, request);
   let committing = false;
   try {
     const listings = z
@@ -100,15 +98,9 @@ export async function pushGoogle(
       (error instanceof CheckError && error.status && error.status < 500)
     ) {
       try {
-        await send(url, "DELETE");
-      } catch (cleanup) {
-        if (!(
-          cleanup instanceof CheckError &&
-          (cleanup.status === 404 || cleanup.status === 410)
-        ))
-          throw new Error(
-            `Google 推送失败，临时 edit ${edit.id} 清理状态待核对`,
-          );
+        await deleteGoogleEdit(url, headers, request);
+      } catch {
+        throw new Error(`Google 推送失败，临时 edit ${id} 清理状态待核对`);
       }
     }
     throw error;

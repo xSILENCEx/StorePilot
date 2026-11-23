@@ -1,16 +1,13 @@
 "use client";
-import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Accordion,
-  ActionIcon,
   Alert,
   Badge,
   Button,
   FileButton,
   Group,
-  Loader,
   Modal,
   NativeSelect,
   Paper,
@@ -20,27 +17,15 @@ import {
   Text,
   Textarea,
   ThemeIcon,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Download,
-  ImagePlus,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { Check, ImagePlus, Sparkles } from "lucide-react";
 import type { ImageRecord, ImageSettings } from "../lib/image-model";
 import type { Platform } from "../lib/model";
-const statuses: Record<string, string> = {
-  queued: "排队中",
-  running: "正在生成",
-  succeeded: "已生成",
-  failed: "生成失败",
-  uncertain: "调用结果未知",
-};
+import {
+  GeneratedImageResults,
+  GeneratedImagePreview,
+} from "./generated-images";
 export function ImageGenerator({
   appId,
   platform,
@@ -504,202 +489,31 @@ export function ImageGenerator({
               </Group>
             </Stack>
           </Tabs.Panel>
-          <Tabs.Panel value="results">
-            <Stack>
-              <Group justify="space-between">
-                <Text size="sm" c="dimmed">
-                  生成结果仅在你选择后加入截图列表。
-                </Text>
-                <Group gap="xs">
-                  <BatchDownload
-                    appId={appId}
-                    platform={platform}
-                    locale={locale}
-                    group={deviceLabel + "生成图"}
-                    items={images.flatMap((image) =>
-                      image.result?.url ? [{ url: image.result.url }] : [],
-                    )}
-                  />
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    leftSection={<Sparkles size={14} />}
-                    onClick={() => setTab("create")}
-                  >
-                    再次生成
-                  </Button>
-                </Group>
-              </Group>
-              {loading && !images.length ? (
-                <Group justify="center" py="xl">
-                  <Loader size="sm" />
-                </Group>
-              ) : !images.length ? (
-                <Stack align="center" py={40}>
-                  <ThemeIcon size={52} variant="light" radius="xl">
-                    <ImagePlus size={25} />
-                  </ThemeIcon>
-                  <Title order={4}>还没有生成图片</Title>
-                  <Text size="sm" c="dimmed">
-                    从一个画面想法开始。
-                  </Text>
-                  <Button variant="light" onClick={() => setTab("create")}>
-                    去描述画面 <ArrowRight size={14} />
-                  </Button>
-                </Stack>
-              ) : (
-                <SimpleGrid cols={{ base: 1, xs: 2, sm: 3 }} spacing="md">
-                  {images.map((image) => (
-                    <Paper p="sm" key={image.id}>
-                      <Stack gap="sm">
-                        {image.result?.url ? (
-                          <button
-                            type="button"
-                            className="preview-button"
-                            aria-label="预览生成图片"
-                            onClick={() => setPreview(image)}
-                          >
-                            <img
-                              className="generated-image"
-                              src={image.result.url}
-                              alt={image.input.settings.prompt}
-                            />
-                          </button>
-                        ) : (
-                          <Stack
-                            align="center"
-                            justify="center"
-                            h={160}
-                            bg="gray.0"
-                            style={{ borderRadius: 8 }}
-                          >
-                            {["queued", "running"].includes(image.status) ? (
-                              <Loader size="sm" />
-                            ) : (
-                              <ImagePlus
-                                size={24}
-                                color="var(--mantine-color-dimmed)"
-                              />
-                            )}
-                            <Text size="sm" c="dimmed">
-                              {statuses[image.status]}
-                            </Text>
-                          </Stack>
-                        )}
-                        <Group justify="space-between">
-                          <Badge
-                            variant="light"
-                            color={
-                              image.status === "failed" ||
-                              image.status === "uncertain"
-                                ? "orange"
-                                : "green"
-                            }
-                            size="sm"
-                          >
-                            {statuses[image.status]}
-                          </Badge>
-                          {!["queued", "running"].includes(image.status) && (
-                            <ActionIcon
-                              variant="subtle"
-                              color="gray"
-                              aria-label="删除生成记录"
-                              loading={deleting === image.id}
-                              onClick={() => void remove(image.id)}
-                            >
-                              <Trash2 size={14} />
-                            </ActionIcon>
-                          )}
-                        </Group>
-                        {image.input.screenshotIndex != null && (
-                          <Text size="sm">
-                            截图 {image.input.screenshotIndex + 1} /{" "}
-                            {image.input.screenshots?.length}
-                          </Text>
-                        )}
-                        <Text size="xs" c="dimmed" lineClamp={2}>
-                          {image.input.settings.prompt}
-                        </Text>
-                        {image.result?.error && (
-                          <Text size="xs" c="orange.8" role="alert">
-                            {image.result.error}
-                          </Text>
-                        )}
-                        {image.result?.url && (
-                          <Button
-                            size="xs"
-                            variant="light"
-                            disabled={
-                              disabled || alreadyAdded(image.result.url)
-                            }
-                            onClick={() => add(image)}
-                          >
-                            {alreadyAdded(image.result.url)
-                              ? "已加入截图"
-                              : "加入商店截图"}
-                          </Button>
-                        )}
-                      </Stack>
-                    </Paper>
-                  ))}
-                </SimpleGrid>
-              )}
-              <Text size="xs" c="dimmed" mt="sm">
-                请核对文字、UI
-                和目标商店的尺寸要求。调用结果未知时不会自动重发。
-              </Text>
-            </Stack>
-          </Tabs.Panel>
+          <GeneratedImageResults
+            appId={appId}
+            platform={platform}
+            locale={locale}
+            deviceLabel={deviceLabel}
+            images={images}
+            setTab={setTab}
+            loading={loading}
+            deleting={deleting}
+            remove={remove}
+            setPreview={setPreview}
+            disabled={disabled}
+            alreadyAdded={alreadyAdded}
+            add={add}
+          />
         </Tabs>
       </Modal>
-      <Modal
-        opened={opened && !!preview}
-        onClose={() => setPreview(null)}
-        title="预览生成图片"
-        size="850px"
-      >
-        {preview?.result?.url && (
-          <Stack>
-            <img
-              className="image-preview"
-              src={preview.result.url}
-              alt={preview.input.settings.prompt}
-            />
-            <Text size="xs" c="dimmed">
-              {preview.result.width} × {preview.result.height}
-            </Text>
-            <Text size="sm">{preview.input.settings.prompt}</Text>
-            <Group justify="space-between" className="modal-footer">
-              <Button
-                variant="subtle"
-                leftSection={<ArrowLeft size={14} />}
-                onClick={() => setPreview(null)}
-              >
-                返回结果
-              </Button>
-              <Group>
-                <Button
-                  component="a"
-                  variant="default"
-                  href={preview.result.url}
-                  download={`screenshot-${preview.id}.png`}
-                  leftSection={<Download size={15} />}
-                >
-                  下载
-                </Button>
-                <Button
-                  disabled={disabled || alreadyAdded(preview.result.url)}
-                  onClick={() => add(preview)}
-                >
-                  {alreadyAdded(preview.result.url)
-                    ? "已加入截图"
-                    : "加入商店截图"}
-                </Button>
-              </Group>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+      <GeneratedImagePreview
+        opened={opened}
+        preview={preview}
+        setPreview={setPreview}
+        disabled={disabled}
+        alreadyAdded={alreadyAdded}
+        add={add}
+      />
     </>
   );
 }

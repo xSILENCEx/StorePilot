@@ -6,7 +6,7 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "admin:create": "tsx scripts/admin.ts",
     "worker": "tsx scripts/worker.ts",
@@ -14,11 +14,12 @@
     "test": "tsx --test tests/*.test.ts",
     "admin:bootstrap": "tsx scripts/bootstrap-admin.ts",
     "config:key": "tsx scripts/config-key.ts",
-    "verify:images": "tsx --test tests/workflow.test.ts",
+    "verify:images": "tsx --test tests/workflow-images.test.ts",
     "services:start": "node scripts/services.mjs start",
     "services:stop": "node scripts/services.mjs stop",
     "services:status": "node scripts/services.mjs status",
-    "verify": "npm run typecheck && npm test && npm run build"
+    "verify": "npm run typecheck && npm test && npm run build",
+    "test:navigation": "node --test tests/workspace-navigation.browser.mjs"
   },
   "repository": {
     "type": "git",
@@ -53,8 +54,12 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/yazl": "^3.3.1",
+    "playwright-core": "^1.65.1",
     "prettier": "^3.10.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": "24.x || 26.x"
   }
 }

@@ -1,40 +1,26 @@
 "use client";
+import {
+  WorkspaceLink,
+  useWorkspaceDrafts,
+  useWorkspaceNavigation,
+} from "../../components/workspace-shell";
+import { StoreCopyEditor } from "../../components/store-copy-editor";
 import { useEffect, useState } from "react";
 import {
-  Accordion,
   ActionIcon,
   Alert,
   Avatar,
   Badge,
   Button,
-  Center,
   Group,
-  Loader,
   Modal,
   Paper,
-  SimpleGrid,
   Stack,
   Text,
-  Textarea,
-  TextInput,
   Title,
-  Tooltip,
-  UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ChevronDown,
-  Download,
-  Layers,
-  Plus,
-  Search,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import { useWorkspaceNavigation } from "../../components/workspace-shell";
+import { ArrowLeft, ArrowRight, Plus, Settings2, Trash2 } from "lucide-react";
 import type { DeviceGroup } from "../../lib/screenshot-groups";
 import {
   availableStoreLocales,
@@ -46,8 +32,9 @@ import { ScreenshotList } from "../../components/screenshot-list";
 import { StorePushButton } from "../../components/store-push-button";
 import { StoreSyncPanel } from "../../components/store-sync-panel";
 import { overwriteStoreDrafts } from "../../lib/apple-sync-model";
-import { useWorkspace } from "../../lib/use-workspace";
 import type { Draft, Platform, StoreApp } from "../../lib/model";
+import { WorkspaceAppList } from "../../components/workspace-app-list";
+import { AppSettingsDialog } from "../../components/app-settings-dialog";
 const empty = (): Draft => ({
   title: "",
   subtitle: "",
@@ -58,17 +45,13 @@ const empty = (): Draft => ({
 export default function Home() {
   const [message, setMessage] = useState("");
   const { apps, ready, saved, blocked, persist, retry, revision } =
-    useWorkspace(setMessage);
+    useWorkspaceDrafts();
   const [selected, select] = useState<string | null>(null);
   const [platform, setPlatform] = useState<Platform>("apple");
   const [catalog, setCatalog] = useState<DeviceGroup[]>();
   const [locale, setLocale] = useState("en-US");
-  const [search, setSearch] = useState("");
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [apple, setApple] = useState("");
-  const [google, setGoogle] = useState("");
   const [languageModal, setLanguageModal] = useState<"add" | "update" | null>(
     null,
   );
@@ -158,13 +141,9 @@ export default function Home() {
   }
   function openSettings(value?: StoreApp) {
     setEditing(value?.id ?? null);
-    setName(value?.name ?? "");
-    setApple(value?.apple ?? "");
-    setGoogle(value?.google ?? "");
     setModal(true);
   }
-  function create(e: React.FormEvent) {
-    e.preventDefault();
+  function create(name: string, apple: string, google: string) {
     const id = editing ?? crypto.randomUUID();
     const existing = apps.find((a) => a.id === editing);
     const next = {
@@ -250,12 +229,7 @@ export default function Home() {
       setValidating(false);
     }
   }
-  const filtered = apps.filter((a) =>
-    `${a.name} ${a.apple} ${a.google}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
-  );
-  useWorkspaceNavigation(app?.name, app?.id, saved && !blocked);
+  useWorkspaceNavigation(app?.name, app?.id);
   return (
     <>
       <Stack gap="xl">
@@ -287,149 +261,14 @@ export default function Home() {
           </Alert>
         )}
         {!app ? (
-          <>
-            <Group justify="space-between" className="page-heading">
-              <div>
-                <Text className="eyebrow" mb={10}>
-                  YOUR STORE WORKSPACE
-                </Text>
-                <Title order={1} size={30}>
-                  应用管理
-                </Title>
-                <Text c="dimmed" size="sm" mt="xs">
-                  在一个地方，准备每个平台、每种语言的商店资料。
-                </Text>
-              </div>
-              <Button
-                leftSection={<Plus size={17} />}
-                onClick={() => openSettings()}
-                disabled={!editable}
-              >
-                添加应用
-              </Button>
-            </Group>
-            <Group justify="space-between">
-              <Text size="sm" c="dimmed">
-                全部应用{" "}
-                <Text component="span" c="dark" fw={600} ml={6}>
-                  {apps.length}
-                </Text>
-              </Text>
-              <Group>
-                <TextInput
-                  size="sm"
-                  placeholder="搜索应用"
-                  aria-label="搜索应用"
-                  leftSection={<Search size={15} />}
-                  value={search}
-                  onChange={(e) => setSearch(e.currentTarget.value)}
-                />
-                <Tooltip label="导出草稿 JSON">
-                  <ActionIcon
-                    variant="default"
-                    size="lg"
-                    aria-label="导出草稿"
-                    onClick={download}
-                  >
-                    <Download size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-            </Group>
-            {!ready ? (
-              <Center py={80}>
-                <Loader size="sm" />
-              </Center>
-            ) : !apps.length ? (
-              <Paper p={60}>
-                <Stack align="center" gap="md">
-                  <Avatar size={68} radius="xl" color="blue">
-                    <Layers size={29} />
-                  </Avatar>
-                  <Title order={3}>从第一个应用开始</Title>
-                  <Text c="dimmed" size="sm" ta="center">
-                    整理文案、生成截图，为下一次版本更新做好准备。
-                  </Text>
-                  <Button
-                    leftSection={<Plus size={16} />}
-                    onClick={() => openSettings()}
-                    disabled={!editable}
-                  >
-                    添加第一个应用
-                  </Button>
-                </Stack>
-              </Paper>
-            ) : !filtered.length ? (
-              <Text c="dimmed" ta="center" py="xl">
-                没有找到匹配的应用
-              </Text>
-            ) : (
-              <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="lg">
-                {filtered.map((a) => (
-                  <Paper key={a.id} p="xl" className="app-card">
-                    <UnstyledButton onClick={() => openApp(a)} w="100%">
-                      <Stack gap="lg">
-                        <Group justify="space-between">
-                          <div className="app-card-icons">
-                            {a.platformIcons?.apple ||
-                            a.platformIcons?.google ? (
-                              (["apple", "google"] as const).map((store) =>
-                                a.platformIcons?.[store] ? (
-                                  <Avatar
-                                    key={store}
-                                    size={52}
-                                    radius="lg"
-                                    color="blue"
-                                    className="app-card-icon"
-                                    src={a.platformIcons[store]}
-                                    alt={
-                                      store === "apple"
-                                        ? "App Store 图标"
-                                        : "Google Play 图标"
-                                    }
-                                  >
-                                    {a.name.slice(0, 1).toUpperCase()}
-                                  </Avatar>
-                                ) : null,
-                              )
-                            ) : (
-                              <Avatar size={52} radius="lg" color="blue">
-                                {a.name.slice(0, 1).toUpperCase()}
-                              </Avatar>
-                            )}
-                          </div>
-                          <ArrowRight
-                            size={18}
-                            color="var(--mantine-color-dimmed)"
-                          />
-                        </Group>
-                        <div>
-                          <Title order={3} size="h4">
-                            {a.name}
-                          </Title>
-                          <Text size="xs" c="dimmed" mt={6} lineClamp={1}>
-                            {a.apple || a.google}
-                          </Text>
-                        </div>
-                        <Group gap="xs">
-                          {a.apple && (
-                            <Badge color="gray" variant="light">
-                              App Store
-                            </Badge>
-                          )}
-                          {a.google && (
-                            <Badge color="gray" variant="light">
-                              Google Play
-                            </Badge>
-                          )}
-                        </Group>
-                      </Stack>
-                    </UnstyledButton>
-                  </Paper>
-                ))}
-              </SimpleGrid>
-            )}
-          </>
+          <WorkspaceAppList
+            apps={apps}
+            editable={editable}
+            ready={ready}
+            openSettings={openSettings}
+            openApp={openApp}
+            download={download}
+          />
         ) : (
           <>
             <div>
@@ -500,7 +339,7 @@ export default function Home() {
                   ))}
                 </Button.Group>
                 <Button
-                  component="a"
+                  component={WorkspaceLink}
                   href={`/settings?appId=${app.id}`}
                   variant="subtle"
                   size="xs"
@@ -645,135 +484,13 @@ export default function Home() {
                       updateDraft={update}
                     />
                   )}
-                  <Paper p={{ base: "md", sm: "xl" }}>
-                    <Group justify="space-between" mb="xl">
-                      <div>
-                        <Title order={3} size="h4">
-                          商店文案
-                        </Title>
-                        <Text size="xs" c="dimmed" mt={5}>
-                          让用户用自己的语言了解你的应用。
-                        </Text>
-                      </div>
-                      <Badge variant="light" color="gray">
-                        {locale}
-                      </Badge>
-                    </Group>
-                    <Stack gap="lg">
-                      <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                        <TextInput
-                          label="应用名称"
-                          value={draft.title}
-                          disabled={!editable}
-                          onChange={(e) =>
-                            update({ title: e.currentTarget.value })
-                          }
-                          placeholder="输入应用名称"
-                        />
-                        <TextInput
-                          label={platform === "apple" ? "副标题" : "简短描述"}
-                          value={draft.subtitle}
-                          disabled={!editable}
-                          onChange={(e) =>
-                            update({ subtitle: e.currentTarget.value })
-                          }
-                          placeholder="一句话描述应用的价值"
-                        />
-                      </SimpleGrid>
-                      <Textarea
-                        label="完整描述"
-                        minRows={6}
-                        autosize
-                        maxRows={16}
-                        value={draft.description}
-                        disabled={!editable}
-                        onChange={(e) =>
-                          update({ description: e.currentTarget.value })
-                        }
-                        placeholder="介绍应用的功能与特色…"
-                      />
-                      {platform === "google" && (
-                        <TextInput
-                          label="宣传视频网址"
-                          value={draft.video ?? ""}
-                          disabled={!editable}
-                          onChange={(e) =>
-                            update({ video: e.currentTarget.value })
-                          }
-                        />
-                      )}
-                      <TextInput
-                        label={platform === "apple" ? "关键词" : "内部备注"}
-                        description={
-                          platform === "apple"
-                            ? "用英文逗号分隔关键词"
-                            : "仅供内部整理，不上传到 Google Play"
-                        }
-                        value={draft.keywords}
-                        disabled={!editable}
-                        onChange={(e) =>
-                          update({ keywords: e.currentTarget.value })
-                        }
-                      />
-                    </Stack>
-                    {platform === "apple" && (
-                      <Accordion mt="lg" variant="default">
-                        <Accordion.Item value="more">
-                          <Accordion.Control>更多商店元数据</Accordion.Control>
-                          <Accordion.Panel>
-                            <Stack gap="md">
-                              <Textarea
-                                label="推广文本"
-                                value={draft.promotionalText ?? ""}
-                                disabled={!editable}
-                                onChange={(e) =>
-                                  update({
-                                    promotionalText: e.currentTarget.value,
-                                  })
-                                }
-                                minRows={2}
-                              />
-                              <Textarea
-                                label="版本更新说明"
-                                value={draft.whatsNew ?? ""}
-                                disabled={!editable}
-                                onChange={(e) =>
-                                  update({ whatsNew: e.currentTarget.value })
-                                }
-                                minRows={3}
-                              />
-                              <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                                {(
-                                  [
-                                    "supportUrl",
-                                    "marketingUrl",
-                                    "privacyPolicyUrl",
-                                    "privacyChoicesUrl",
-                                  ] as const
-                                ).map((field) => (
-                                  <TextInput
-                                    key={field}
-                                    label={
-                                      {
-                                        supportUrl: "支持网址",
-                                        marketingUrl: "营销网址",
-                                        privacyPolicyUrl: "隐私政策网址",
-                                        privacyChoicesUrl: "隐私选择网址",
-                                      }[field]
-                                    }
-                                    value={draft[field] ?? ""}
-                                    disabled={!editable}
-                                    onChange={(e) =>
-                                      update({ [field]: e.currentTarget.value })
-                                    }
-                                  />
-                                ))}
-                              </SimpleGrid>
-                            </Stack>
-                          </Accordion.Panel>
-                        </Accordion.Item>
-                      </Accordion>
-                    )}
+                  <StoreCopyEditor
+                    locale={locale}
+                    draft={draft}
+                    editable={editable}
+                    platform={platform}
+                    update={update}
+                  >
                     <Group
                       justify="space-between"
                       mt="xl"
@@ -805,7 +522,7 @@ export default function Home() {
                         />
                       </Group>
                     </Group>
-                  </Paper>
+                  </StoreCopyEditor>
                 </Stack>
               </div>
             ) : (
@@ -818,54 +535,14 @@ export default function Home() {
           </>
         )}
       </Stack>
-      <Modal
-        opened={modal}
-        onClose={() => setModal(false)}
-        title={editing ? "应用设置" : "添加应用"}
-        size="md"
-      >
-        <form onSubmit={create}>
-          <Stack>
-            <Text size="sm" c="dimmed">
-              填写名称与至少一个平台的应用标识。
-            </Text>
-            <TextInput
-              data-autofocus
-              required
-              label="应用名称"
-              value={name}
-              maxLength={120}
-              onChange={(e) => setName(e.currentTarget.value)}
-              placeholder="例如：我的应用"
-            />
-            <TextInput
-              label="Apple Bundle ID"
-              value={apple}
-              onChange={(e) => setApple(e.currentTarget.value)}
-              placeholder="com.example.app"
-            />
-            <TextInput
-              label="Google 包名"
-              value={google}
-              onChange={(e) => setGoogle(e.currentTarget.value)}
-              placeholder="com.example.app"
-            />
-            <Group justify="end" className="modal-footer">
-              <Button variant="default" onClick={() => setModal(false)}>
-                取消
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  !editable || !name.trim() || (!apple.trim() && !google.trim())
-                }
-              >
-                {editing ? "保存设置" : "创建应用"}
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
+      {modal && (
+        <AppSettingsDialog
+          app={apps.find((value) => value.id === editing)}
+          editable={editable}
+          onClose={() => setModal(false)}
+          onSave={create}
+        />
+      )}
       {languageModal && app && (
         <TranslationDialog
           key={app.id + platform + languageModal}

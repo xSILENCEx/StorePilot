@@ -1,35 +1,14 @@
-import { sign } from "node:crypto";
+import { CheckError, storeRequest } from "./store-request";
+import { createGoogleEdit, deleteGoogleEdit } from "./google-edit";
+import { appleToken, signJwt } from "./store-token";
 import { orderedModels, configFields, type ConfigScope } from "./config-model";
+export { CheckError, storeRequest } from "./store-request";
 export type CheckResult = {
   status: "passed" | "partial" | "failed";
   message: string;
   checkedAt: string;
   steps: { step: string; message: string }[];
 };
-export class CheckError extends Error {
-  constructor(
-    public step: string,
-    message: string,
-    public status?: number,
-  ) {
-    super(message);
-  }
-}
-function jwt(
-  header: object,
-  payload: object,
-  key: string,
-  algorithm: "ES256" | "RS256",
-) {
-  const data = [header, payload]
-    .map((v) => Buffer.from(JSON.stringify(v)).toString("base64url"))
-    .join(".");
-  const signature = sign("sha256", Buffer.from(data), {
-    key,
-    ...(algorithm === "ES256" ? { dsaEncoding: "ieee-p1363" as const } : {}),
-  }).toString("base64url");
-  return `${data}.${signature}`;
-}
 export async function checkConnection(
   scope: ConfigScope,
   config: { fields: unknown; secret: string },
@@ -46,18 +25,7 @@ export async function checkConnection(
   try {
     if (scope === "apple") {
       const fields = configFields.apple.parse(config.fields);
-      const now = Math.floor(Date.now() / 1000);
-      const token = jwt(
-        { alg: "ES256", kid: fields.keyId, typ: "JWT" },
-        {
-          iss: fields.issuerId,
-          iat: now - 5,
-          exp: now + 600,
-          aud: "appstoreconnect-v1",
-        },
-        config.secret,
-        "ES256",
-      );
+      const token = appleToken(config);
       await step("apple_app", "检查 Apple 鉴权与应用读取权限");
       const result = await request(
         `https://api.appstoreconnect.apple.com/v1/apps/${encodeURIComponent(fields.appId)}?fields[apps]=bundleId`,
@@ -96,26 +64,16 @@ export async function checkConnection(
           checkedAt: new Date().toISOString(),
           steps,
         };
-      const url = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(fields.packageName)}/edits`;
       const headers = {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       };
       await step("google_edit", "创建临时 edit，以检查应用访问权限");
-      const edit = await request(
-        url,
-        { method: "POST", headers, body: "{}" },
-        "google_edit",
+      const { id, url: editUrl } = await createGoogleEdit(
+        fields.packageName,
+        headers,
+        request,
       );
-      if (
-        typeof edit.id !== "string" ||
-        !/^[A-Za-z0-9_-]{1,200}$/.test(edit.id)
-      )
-        throw new CheckError(
-          "google_edit",
-          "创建 edit 的响应缺少 ID，请在 Play Console 检查未提交的 edit。",
-        );
-      const editUrl = `${url}/${encodeURIComponent(edit.id)}`;
       let readError: unknown;
       try {
         await request(`${editUrl}/listings`, { headers }, "google_listings");
@@ -124,12 +82,12 @@ export async function checkConnection(
         readError = e;
       }
       try {
-        await request(editUrl, { method: "DELETE", headers }, "google_cleanup");
+        await deleteGoogleEdit(editUrl, headers, request);
         await step("google_cleanup", "已删除本次临时 edit，未提交任何更改");
       } catch {
         throw new CheckError(
           "google_cleanup",
-          `临时 edit ${edit.id} 清理失败，请在 Play Console 检查；验证未提交任何更改。`,
+          `临时 edit ${id} 清理失败，请在 Play Console 检查；验证未提交任何更改。`,
         );
       }
       if (readError) throw readError;
@@ -207,78 +165,11 @@ export async function checkConnection(
   }
 }
 
-export async function storeRequest(
-  fetcher: typeof fetch,
-  url: string,
-  init: RequestInit,
-  stage: string,
-  timeout = 30000,
-): Promise<Record<string, unknown>> {
-  let response: Response;
-  try {
-    response = await fetcher(url, {
-      ...init,
-      redirect: "error",
-      signal: AbortSignal.timeout(timeout),
-    });
-  } catch (e) {
-    const error = e as { name?: string; cause?: { code?: string } };
-    throw new CheckError(
-      stage,
-      error.name === "TimeoutError" || error.name === "AbortError"
-        ? "连接超时，请检查服务端网络和目标服务。"
-        : `无法连接目标服务${error.cause?.code && /^[A-Z_]+$/.test(error.cause.code) ? `（${error.cause.code}）` : ""}，请检查服务端网络、DNS、代理或 TLS。`,
-    );
-  }
-  if (!response.ok) {
-    await response.body?.cancel();
-    const help: Record<number, string> = {
-      400: "请求被拒绝：请检查凭据、服务账号或应用配置；Google 服务账号还需检查服务器时间。",
-      401: "鉴权失败：请检查密钥是否正确、过期或已撤销，以及服务器时间。",
-      403: "权限不足或 API 尚未启用，请检查对应服务的账号授权。",
-      404: "应用、模型目录或 API 地址不存在，或当前账号不可见。",
-      429: "触发限流或账户配额限制，请稍后重试。",
-    };
-    throw new CheckError(
-      stage,
-      `HTTP ${response.status}：${help[response.status] ?? "服务请求失败，请检查服务状态后重试。"}`,
-      response.status,
-    );
-  }
-  if (response.status === 204) return {};
-  try {
-    const reader = response.body?.getReader();
-    if (!reader) return {};
-    let size = 0;
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (size > 4 * 1024 * 1024) {
-        await reader.cancel();
-        throw new Error();
-      }
-      chunks.push(chunk.value);
-    }
-    if (init.method === "DELETE" && !size) return {};
-    const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (!data || typeof data !== "object" || Array.isArray(data))
-      throw new Error();
-    return data;
-  } catch {
-    throw new CheckError(
-      stage,
-      "服务响应格式不兼容或响应过大；请检查 API 地址和兼容协议。",
-    );
-  }
-}
-
 export async function googleAccessToken(secret: string, fetcher: typeof fetch) {
   const request = storeRequest.bind(null, fetcher);
   const account = JSON.parse(secret);
   const now = Math.floor(Date.now() / 1000);
-  const assertion = jwt(
+  const assertion = signJwt(
     { alg: "RS256", typ: "JWT" },
     {
       iss: account.client_email,

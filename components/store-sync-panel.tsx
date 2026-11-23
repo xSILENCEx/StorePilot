@@ -1,5 +1,6 @@
 "use client";
-import { BatchDownload } from "./batch-download";
+import { StoreGraphics, StoreScreenshots } from "./store-snapshot-media";
+import { WorkspaceLink } from "./workspace-shell";
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -11,18 +12,16 @@ import {
   Group,
   Modal,
   Select,
-  SimpleGrid,
   Stack,
   Tabs,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { CloudDownload, Download } from "lucide-react";
 import { deviceGroups } from "../lib/screenshot-groups";
-import { graphicTypes, graphicLabels, type GraphicType } from "../lib/model";
-import type { Draft, StoreApp, Platform } from "../lib/model";
+import { graphicLabels, type GraphicType } from "../lib/model";
+import type { StoreApp, Platform } from "../lib/model";
 import {
   appleDeviceLabel,
   type ImportSection,
@@ -32,22 +31,11 @@ import {
   type AppleSnapshot,
   type GoogleSnapshot,
 } from "../lib/apple-sync-model";
+import { StoreAppDetails, StoreMetadata } from "./store-snapshot-details";
 type State = {
   snapshot: AppleSnapshot | GoogleSnapshot | null;
   stale: boolean;
   job: { status: string; result?: { error?: string; message?: string } } | null;
-};
-const labels: Record<string, string> = {
-  title: "应用名称",
-  subtitle: "副标题",
-  description: "描述",
-  keywords: "关键词",
-  promotionalText: "推广文本",
-  whatsNew: "版本更新说明",
-  supportUrl: "支持网址",
-  marketingUrl: "营销网址",
-  privacyPolicyUrl: "隐私政策网址",
-  privacyChoicesUrl: "隐私选择网址",
 };
 export function StoreSyncPanel({
   app,
@@ -181,10 +169,6 @@ export function StoreSyncPanel({
   const entry = snapshot?.locales[selectedLocale];
   const local = app.drafts[`${platform}:${selectedLocale}`];
   const differences = entry ? textDiff(local, entry.draft, platform) : [];
-  const groups = Object.groupBy(
-    entry?.screenshots ?? [],
-    (image) => image.deviceType,
-  );
   const screenshotCount = Object.values(snapshot?.locales ?? {}).reduce(
     (count, value) => count + (value.screenshots?.length ?? 0),
     0,
@@ -245,7 +229,10 @@ export function StoreSyncPanel({
           {!enabled && (
             <Alert color="orange">
               请先保存草稿并完成{" "}
-              <a href={`/settings?appId=${app.id}`}>{store} 连接配置</a>。
+              <WorkspaceLink href={`/settings?appId=${app.id}`}>
+                {store} 连接配置
+              </WorkspaceLink>
+              。
             </Alert>
           )}
           {error && <Alert color="red">{error}</Alert>}
@@ -354,281 +341,31 @@ export function StoreSyncPanel({
                     </Button>
                   </Group>
                 )}
-                <Tabs.Panel value="metadata" pt="lg">
-                  <Stack gap="lg">
-                    {entry && (
-                      <>
-                        <Group justify="space-between">
-                          <Text size="sm" fw={550}>
-                            {selectedLocale} 商店元数据
-                          </Text>
-                        </Group>
-                        <Text size="xs" c="dimmed">
-                          {!local
-                            ? "此语言尚无草稿。"
-                            : differences.length
-                              ? `${differences.length} 个字段与草稿不同。`
-                              : "与草稿一致。"}
-                        </Text>
-                        <Accordion variant="separated">
-                          {Object.entries(
-                            apple
-                              ? labels
-                              : {
-                                  title: "应用名称",
-                                  subtitle: "简短描述",
-                                  description: "完整描述",
-                                  video: "宣传视频网址",
-                                },
-                          ).map(([field, label]) => {
-                            const key = field as keyof Omit<
-                              Draft,
-                              "images" | "screenshotGroups" | "graphics"
-                            >;
-                            const remote = entry.draft[key] ?? "";
-                            return (
-                              <Accordion.Item key={field} value={field}>
-                                <Accordion.Control>
-                                  <Group justify="space-between" pr="sm">
-                                    <Text size="sm">{label}</Text>
-                                    {differences.includes(key) && (
-                                      <Badge
-                                        size="xs"
-                                        color="orange"
-                                        variant="light"
-                                      >
-                                        不同
-                                      </Badge>
-                                    )}
-                                  </Group>
-                                </Accordion.Control>
-                                <Accordion.Panel>
-                                  <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                                    <div>
-                                      <Text size="xs" c="dimmed">
-                                        草稿
-                                      </Text>
-                                      <p className="diff-copy">
-                                        {local?.[key] || "（空）"}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Text size="xs" c="blue.7">
-                                        最新商店资料
-                                      </Text>
-                                      <p className="diff-copy">
-                                        {remote || "（空）"}
-                                      </p>
-                                    </div>
-                                  </SimpleGrid>
-                                </Accordion.Panel>
-                              </Accordion.Item>
-                            );
-                          })}
-                        </Accordion>
-                      </>
-                    )}
-                  </Stack>
-                </Tabs.Panel>
-                <Tabs.Panel value="screenshots" pt="lg">
-                  <Stack gap="lg">
-                    {!entry?.screenshots?.length ? (
-                      <Text size="sm" c="dimmed" ta="center" py="xl">
-                        此语言暂无商店截图。
-                      </Text>
-                    ) : (
-                      Object.entries(groups).map(([device, images]) => {
-                        const shots = images ?? [];
-                        return (
-                          <section key={device}>
-                            <Group justify="space-between" mb="md">
-                              <div>
-                                <Text size="sm" fw={550}>
-                                  {groupLabel(device)}
-                                </Text>
-                                <Text size="xs" c="dimmed">
-                                  {shots.length} 张 · {shots[0]?.width} ×{" "}
-                                  {shots[0]?.height}
-                                </Text>
-                              </div>
-                              <BatchDownload
-                                appId={app.id}
-                                platform={platform}
-                                locale={selectedLocale}
-                                group={groupLabel(device) + "商店截图"}
-                                items={shots.flatMap((image) =>
-                                  image.url ? [{ url: image.url }] : [],
-                                )}
-                              />
-                            </Group>
-                            <SimpleGrid
-                              cols={{ base: 2, xs: 3, sm: 4 }}
-                              spacing="sm"
-                              verticalSpacing="sm"
-                            >
-                              {shots.map((image) => (
-                                <div key={image.id}>
-                                  {image.url ? (
-                                    <button
-                                      type="button"
-                                      className="preview-button"
-                                      aria-label="预览商店截图"
-                                      onClick={() => setPreview(image)}
-                                    >
-                                      <img
-                                        className="store-sync-screenshot"
-                                        width={image.width || undefined}
-                                        height={image.height || undefined}
-                                        src={image.url}
-                                        alt={`${groupLabel(device)} 商店截图`}
-                                        loading="lazy"
-                                      />
-                                    </button>
-                                  ) : (
-                                    <Text size="xs" c="dimmed" py="xl">
-                                      图片尚未处理完成
-                                    </Text>
-                                  )}
-                                </div>
-                              ))}
-                            </SimpleGrid>
-                          </section>
-                        );
-                      })
-                    )}
-                    <Text size="xs" c="dimmed">
-                      保持商店展示顺序，按语言与设备分组。
-                    </Text>
-                  </Stack>
-                </Tabs.Panel>
+                <StoreMetadata
+                  entry={entry}
+                  selectedLocale={selectedLocale}
+                  local={local}
+                  apple={apple}
+                  differences={differences}
+                />
+                <StoreScreenshots
+                  appId={app.id}
+                  platform={platform}
+                  locale={selectedLocale}
+                  onPreview={setPreview}
+                  screenshots={entry?.screenshots ?? []}
+                  groupLabel={groupLabel}
+                />
                 {"packageName" in snapshot && (
-                  <Tabs.Panel value="graphics" pt="lg">
-                    <Stack>
-                      <Group justify="flex-end">
-                        <BatchDownload
-                          appId={app.id}
-                          platform={platform}
-                          locale={selectedLocale}
-                          group="商店图片资源"
-                          items={graphicTypes.flatMap((type) => {
-                            const url =
-                              snapshot.locales[selectedLocale]?.graphics?.[type]
-                                ?.url;
-                            return url
-                              ? [{ url, label: graphicLabels[type] }]
-                              : [];
-                          })}
-                        />
-                      </Group>
-                      {graphicTypes.map((type) => {
-                        const image =
-                          snapshot.locales[selectedLocale]?.graphics?.[type];
-                        return (
-                          <Stack key={type} gap="xs">
-                            <Group justify="space-between">
-                              <Text fw={550}>{graphicLabels[type]}</Text>
-                            </Group>
-                            {image?.url ? (
-                              <button
-                                type="button"
-                                className="preview-button"
-                                style={{
-                                  width: "fit-content",
-                                  maxWidth: "100%",
-                                }}
-                                onClick={() => setPreview(image)}
-                                aria-label={`预览${graphicLabels[type]}`}
-                              >
-                                <img
-                                  src={image.url}
-                                  alt={graphicLabels[type]}
-                                  style={{
-                                    display: "block",
-                                    maxWidth: "100%",
-                                    maxHeight: 180,
-                                  }}
-                                />
-                              </button>
-                            ) : (
-                              <Text size="sm" c="dimmed">
-                                {snapshot.locales[selectedLocale]?.graphics
-                                  ? "此语言暂无该资源"
-                                  : "重新同步后可查看此语言的图片资源"}
-                              </Text>
-                            )}
-                          </Stack>
-                        );
-                      })}
-                    </Stack>
-                  </Tabs.Panel>
+                  <StoreGraphics
+                    appId={app.id}
+                    platform={platform}
+                    locale={selectedLocale}
+                    onPreview={setPreview}
+                    graphics={snapshot.locales[selectedLocale]?.graphics}
+                  />
                 )}
-                <Tabs.Panel value="app" pt="lg">
-                  <Stack>
-                    {snapshot.icon?.url && (
-                      <Group justify="space-between">
-                        <Text size="sm" c="dimmed">
-                          应用图标
-                        </Text>
-                        <img
-                          width={64}
-                          height={64}
-                          style={{ objectFit: "contain" }}
-                          src={snapshot.icon.url}
-                          alt="商店应用图标"
-                        />
-                      </Group>
-                    )}
-                    {"packageName" in snapshot && !snapshot.details && (
-                      <Text size="sm" c="dimmed">
-                        重新同步商店资料后可查看默认语言和公开联系方式。
-                      </Text>
-                    )}
-                    {Object.entries(
-                      "packageName" in snapshot
-                        ? {
-                            包名: snapshot.packageName,
-                            ...(snapshot.details && {
-                              应用名称:
-                                snapshot.locales[
-                                  snapshot.details.defaultLanguage ?? ""
-                                ]?.draft.title,
-                              默认语言: snapshot.details.defaultLanguage,
-                              联系网站: snapshot.details.contactWebsite,
-                              支持邮箱: snapshot.details.contactEmail,
-                              支持电话: snapshot.details.contactPhone,
-                            }),
-                          }
-                        : {
-                            应用名称: snapshot.metadata?.name,
-                            主要语言: snapshot.metadata?.primaryLocale,
-                            SKU: snapshot.metadata?.sku,
-                            版本: snapshot.target.version,
-                            平台: snapshot.target.platform,
-                            版本状态: snapshot.target.versionState,
-                            版权: snapshot.metadata?.copyright,
-                            发布方式: snapshot.metadata?.releaseType,
-                            最早发布日期:
-                              snapshot.metadata?.earliestReleaseDate,
-                            主要分类: snapshot.metadata?.primaryCategoryId,
-                            次要分类: snapshot.metadata?.secondaryCategoryId,
-                            年龄分级: snapshot.metadata?.ageRating,
-                          },
-                    ).map(([label, value]) => (
-                      <Group key={label} justify="space-between" align="start">
-                        <Text size="sm" c="dimmed">
-                          {label}
-                        </Text>
-                        <Text
-                          size="sm"
-                          maw="65%"
-                          style={{ overflowWrap: "anywhere" }}
-                        >
-                          {value || "—"}
-                        </Text>
-                      </Group>
-                    ))}
-                  </Stack>
-                </Tabs.Panel>
+                <StoreAppDetails snapshot={snapshot} />
               </Tabs>
             </>
           )}

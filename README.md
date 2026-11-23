@@ -22,7 +22,7 @@
 
 ## 首次启动
 
-需要 Node.js 24 和 npm：
+需要 Node.js 24 或 26，以及 npm：
 
 ```sh
 npm install

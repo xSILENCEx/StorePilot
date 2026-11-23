@@ -1,3 +1,4 @@
+import { createGoogleEdit, deleteGoogleEdit } from "./google-edit";
 import { z } from "zod";
 import {
   CheckError,
@@ -73,17 +74,7 @@ export async function readGoogleSnapshot(
     }
   }
   report("google_edit", "OAuth 鉴权成功，创建临时 edit");
-  const base = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${packageName}/edits`;
-  const edit = await request(
-    base,
-    { method: "POST", headers, body: "{}" },
-    "google_edit",
-  );
-  const id = z
-    .string()
-    .regex(/^[a-zA-Z0-9_-]{1,200}$/)
-    .parse(edit.id);
-  const url = base + "/" + id;
+  const { id, url } = await createGoogleEdit(packageName, headers, request);
   try {
     report("google_details", "读取应用默认语言和公开联系方式");
     const details = appDetails.parse(
@@ -158,7 +149,7 @@ export async function readGoogleSnapshot(
     };
   } finally {
     try {
-      await request(url, { headers, method: "DELETE" }, "google_cleanup");
+      await deleteGoogleEdit(url, headers, request);
     } catch (error) {
       throw new CheckError(
         "google_cleanup",

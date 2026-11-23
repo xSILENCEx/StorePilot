@@ -60,9 +60,15 @@ export function TaskDrawer({
   useEffect(() => {
     if (!opened) return;
     let active = true;
+    setReady(false);
+    setJobs([]);
+    setError("");
     const load = async () => {
       try {
-        const r = await fetch("/api/jobs", { cache: "no-store" });
+        const r = await fetch(
+          appId ? "/api/jobs?appId=" + encodeURIComponent(appId) : "/api/jobs",
+          { cache: "no-store" },
+        );
         const data = await r.json();
         if (!r.ok) throw new Error(data.error);
         if (active) {
@@ -80,8 +86,8 @@ export function TaskDrawer({
       active = false;
       clearInterval(timer);
     };
-  }, [opened]);
-  const filtered = jobs.filter((j) => !appId || j.app_id === appId);
+  }, [opened, appId]);
+
   return (
     <Drawer
       opened={opened}
@@ -98,13 +104,13 @@ export function TaskDrawer({
         </Text>
         {error && <Alert color="red">{error}</Alert>}
         {!ready && !error && <Loader size="sm" />}
-        {ready && !filtered.length && (
+        {ready && !jobs.length && (
           <Text c="dimmed" ta="center" py="xl">
             暂无任务记录
           </Text>
         )}
         <Accordion variant="separated">
-          {filtered.map((j) => (
+          {jobs.map((j) => (
             <Accordion.Item value={j.id} key={j.id}>
               <Accordion.Control>
                 <Group justify="space-between" pr="sm">
@@ -143,11 +149,16 @@ export function TaskDrawer({
                       variant="light"
                       onClick={async () => {
                         try {
-                          const r = await fetch("/api/jobs", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ retryId: j.id }),
-                          });
+                          const r = await fetch(
+                            appId
+                              ? "/api/jobs?appId=" + encodeURIComponent(appId)
+                              : "/api/jobs",
+                            {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ retryId: j.id }),
+                            },
+                          );
                           const data = await r.json();
                           if (!r.ok) throw new Error(data.error);
                           notifications.show({ message: "已重新提交校验任务" });

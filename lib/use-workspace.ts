@@ -7,10 +7,11 @@ export function useWorkspace(onError: (message: string) => void) {
   const [saved, setSaved] = useState(true);
   const [blocked, setBlocked] = useState(false);
   const revision = useRef(0);
+  const readVersion = useRef("");
   const latest = useRef(apps);
   const version = useRef(0);
   const stored = useRef(0);
-  const saving = useRef(false);
+  const saving = useRef<Promise<boolean> | null>(null);
   const halted = useRef(false);
   const errorRef = useRef(onError);
   errorRef.current = onError;
@@ -24,8 +25,10 @@ export function useWorkspace(onError: (message: string) => void) {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error);
         revision.current = data.revision;
+        readVersion.current = data.readVersion;
         latest.current = data.apps;
         setApps(data.apps);
+        errorRef.current("");
         setReady(true);
         setBlocked(false);
       })
@@ -55,9 +58,12 @@ export function useWorkspace(onError: (message: string) => void) {
       const edit = version.current;
       pending = true;
       try {
-        const response = await fetch("/api/apps?revision=" + base, {
-          cache: "no-store",
-        });
+        const response = await fetch(
+          "/api/apps?version=" + readVersion.current,
+          {
+            cache: "no-store",
+          },
+        );
         if (!response.ok || response.status === 204) return;
         const data = await response.json();
         if (
@@ -67,6 +73,7 @@ export function useWorkspace(onError: (message: string) => void) {
           !halted.current
         ) {
           revision.current = data.revision;
+          readVersion.current = data.readVersion;
           latest.current = data.apps;
           setApps(data.apps);
         }
@@ -84,34 +91,41 @@ export function useWorkspace(onError: (message: string) => void) {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [ready]);
-  const flush = useCallback(async () => {
-    if (saving.current || halted.current || stored.current === version.current)
-      return;
-    saving.current = true;
-    try {
-      while (stored.current !== version.current) {
-        const current = version.current;
-        const response = await fetch("/api/apps", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            apps: latest.current,
-            revision: revision.current,
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error ?? "保存失败");
-        revision.current = data.revision;
-        stored.current = current;
+  const flush = useCallback((): Promise<boolean> => {
+    if (saving.current) return saving.current;
+    if (stored.current === version.current) return Promise.resolve(true);
+    if (halted.current) return Promise.resolve(false);
+    async function save() {
+      try {
+        while (stored.current !== version.current) {
+          const current = version.current;
+          const response = await fetch("/api/apps", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apps: latest.current,
+              revision: revision.current,
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? "保存失败");
+          revision.current = data.revision;
+          stored.current = current;
+        }
+        setSaved(true);
+        errorRef.current("");
+        return true;
+      } catch (e) {
+        halted.current = true;
+        setBlocked(true);
+        errorRef.current(e instanceof Error ? e.message : "保存失败");
+        return false;
       }
-      setSaved(true);
-    } catch (e) {
-      halted.current = true;
-      setBlocked(true);
-      errorRef.current(e instanceof Error ? e.message : "保存失败");
-    } finally {
-      saving.current = false;
     }
+    saving.current = save().finally(() => {
+      saving.current = null;
+    });
+    return saving.current;
   }, []);
   useEffect(() => {
     if (!ready) return;
@@ -150,6 +164,7 @@ export function useWorkspace(onError: (message: string) => void) {
     ready,
     saved,
     blocked,
+    flush,
     persist,
     retry,
     revision: revision.current,

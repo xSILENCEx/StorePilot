@@ -40,3 +40,8 @@ export function pushContent(
   return { fields, groups, errors };
 }
 export type PushContent = ReturnType<typeof pushContent>;
+
+export type PushEntry = PushContent & { locale: string };
+export type LoadAsset = (
+  url: string,
+) => Promise<{ bytes: Buffer; mime: string }>;

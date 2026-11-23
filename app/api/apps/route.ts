@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { draftAssetUrls } from "../../../lib/screenshot-groups";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../lib/db";
@@ -13,60 +14,68 @@ import { workspaceSchema } from "../../../lib/model";
 export async function GET(request: Request) {
   try {
     await authorize(request);
-    const known = new URL(request.url).searchParams.get("revision");
-    if (known !== null) {
-      const current = db()
+    const known = new URL(request.url).searchParams.get("version");
+    return db().transaction((tx) => {
+      let state = tx
         .select({ revision: workspaces.revision })
         .from(workspaces)
         .where(eq(workspaces.id, "default"))
         .get();
-      if (current && String(current.revision) === known)
+      if (!state)
+        state = tx
+          .insert(workspaces)
+          .values({ id: "default" })
+          .returning({ revision: workspaces.revision })
+          .get();
+      const icons = new Map<string, { identifier: string; url: string }>();
+      for (const [platform, table, identifierPath] of [
+        ["apple", storeSnapshots, "$.target.bundleId"],
+        ["google", googleSnapshots, "$.packageName"],
+      ] as const) {
+        const rows = tx
+          .select({
+            appId: table.app_id,
+            identifier: sql<string>`json_extract(${table.current_snapshot}, ${identifierPath})`,
+            url: sql<
+              string | null
+            >`json_extract(${table.current_snapshot}, '$.icon.url')`,
+          })
+          .from(table)
+          .orderBy(table.app_id)
+          .all();
+        for (const icon of rows)
+          if (icon.url)
+            icons.set(platform + ":" + icon.appId, {
+              identifier: icon.identifier,
+              url: icon.url,
+            });
+      }
+      const readVersion = createHash("sha256")
+        .update(JSON.stringify([state.revision, ...icons]))
+        .digest("hex");
+      if (known === readVersion)
         return new Response(null, {
           status: 204,
           headers: { "Cache-Control": "private, no-store" },
         });
-    }
-    await db()
-      .insert(workspaces)
-      .values({ id: "default" })
-      .onConflictDoNothing();
-    const [row] = await db()
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.id, "default"));
-    const icons = new Map<string, { identifier: string; url: string }>();
-    for (const [platform, table, identifierPath] of [
-      ["apple", storeSnapshots, "$.target.bundleId"],
-      ["google", googleSnapshots, "$.packageName"],
-    ] as const) {
-      const rows = db()
-        .select({
-          appId: table.app_id,
-          identifier: sql<string>`json_extract(${table.current_snapshot}, ${identifierPath})`,
-          url: sql<
-            string | null
-          >`json_extract(${table.current_snapshot}, '$.icon.url')`,
-        })
-        .from(table)
-        .all();
-      for (const icon of rows)
-        if (icon.url)
-          icons.set(platform + ":" + icon.appId, {
-            identifier: icon.identifier,
-            url: icon.url,
-          });
-    }
-    return json({
-      apps: row.apps.map((app) => {
-        const platformIcons: Partial<Record<"apple" | "google", string>> = {};
-        for (const platform of ["apple", "google"] as const) {
-          const icon = icons.get(platform + ":" + app.id);
-          if (icon && icon.identifier === app[platform])
-            platformIcons[platform] = icon.url;
-        }
-        return { ...app, platformIcons };
-      }),
-      revision: row.revision,
+      const row = tx
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, "default"))
+        .get()!;
+      const payload = {
+        apps: row.apps.map((app) => {
+          const platformIcons: Partial<Record<"apple" | "google", string>> = {};
+          for (const platform of ["apple", "google"] as const) {
+            const icon = icons.get(platform + ":" + app.id);
+            if (icon && icon.identifier === app[platform])
+              platformIcons[platform] = icon.url;
+          }
+          return { ...app, platformIcons };
+        }),
+        revision: row.revision,
+      };
+      return json({ ...payload, readVersion });
     });
   } catch (e) {
     return failure(e);
