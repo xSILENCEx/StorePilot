@@ -112,3 +112,24 @@ test("Apple 关键词按 UTF-8 字节保留完整词条", () => {
   assert.equal(fitAppleKeywords(word + "，较长词条,a"), word + ",a");
   assert.throws(() => fitAppleKeywords("中".repeat(34)), /完整关键词/);
 });
+
+import sharp from "sharp";
+import { enlargeTranslation } from "../lib/translation-upscale";
+test("翻译图片放大保留颜色、顺序和完整画面，空余边缘以相邻像素补齐", async () => {
+  const input = await sharp(Buffer.from([255, 0, 0, 0, 255, 0]), {
+    raw: { width: 2, height: 1, channels: 3 },
+  })
+    .png()
+    .toBuffer();
+  const output = await enlargeTranslation(input, 4, 4);
+  const { data, info } = await sharp(output)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  assert.deepEqual([info.width, info.height], [4, 4]);
+  for (let y = 0; y < 4; y++)
+    assert.deepEqual(
+      [...data.subarray(y * 12, y * 12 + 12)],
+      [255, 0, 0, 255, 0, 0, 0, 255, 0, 0, 255, 0],
+    );
+  await assert.rejects(enlargeTranslation(input, 1, 1), /保留全部像素/);
+});

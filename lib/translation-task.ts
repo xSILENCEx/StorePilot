@@ -1,3 +1,5 @@
+import { enlargeTranslation } from "./translation-upscale";
+import type { AssetTarget } from "./asset-target";
 import { translationCanvas } from "./translation-image-size";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -123,44 +125,47 @@ async function translateImage(
     0.995 * Math.max(size.width * height, size.height * width);
   const fitsOriginal =
     closeRatio && size.width >= width && size.height >= height;
-  if (
-    !closeRatio ||
-    (!fitsOriginal && item.kind === "screenshot" && item.group === "ungrouped")
-  )
-    throw new TranslationError(
-      `${item.label}：模型输出 ${size.width}×${size.height}，来源 ${width}×${height}，无法在允许的比例和尺寸范围内适配`,
-    );
+  const targetSpec: AssetTarget | undefined =
+    item.kind === "graphic"
+      ? { kind: "graphic", platform: "google", type: item.field }
+      : item.kind === "screenshot" && item.group !== "ungrouped"
+        ? {
+            kind: "screenshot",
+            platform: platformSchema.parse(job.platform),
+            appId: job.app_id,
+            group: item.group,
+            preferred: width + "x" + height,
+          }
+        : undefined;
+  const catalog =
+    targetSpec?.kind === "screenshot" && targetSpec.platform === "apple"
+      ? db()
+          .select()
+          .from(storeSnapshots)
+          .where(eq(storeSnapshots.app_id, job.app_id))
+          .get()?.current_snapshot.deviceGroups
+      : undefined;
   const pipeline = image.autoOrient();
   if (fitsOriginal)
     pipeline.resize(width, height, { fit: "cover", withoutEnlargement: true });
   let bytes: Buffer = await pipeline.png().toBuffer();
-  if (item.kind === "graphic")
-    bytes = await prepareStoreImage(bytes, {
-      kind: "graphic",
-      platform: "google",
-      type: item.field,
-    });
-  if (item.kind === "screenshot" && item.group !== "ungrouped") {
-    const catalog =
-      job.platform === "apple"
-        ? db()
-            .select()
-            .from(storeSnapshots)
-            .where(eq(storeSnapshots.app_id, job.app_id))
-            .get()?.current_snapshot.deviceGroups
-        : undefined;
-    bytes = await prepareStoreImage(
-      bytes,
-      {
-        kind: "screenshot",
-        platform: platformSchema.parse(job.platform),
-        appId: job.app_id,
-        group: item.group,
-        preferred: width + "x" + height,
-      },
-      catalog,
+  if (closeRatio && targetSpec) {
+    try {
+      const native = await prepareStoreImage(bytes, targetSpec, catalog);
+      return (await storeAsset(native)).url;
+    } catch (e) {
+      if (!(e instanceof ImageSizeError) || fitsOriginal) throw e;
+    }
+  }
+  if (!fitsOriginal) {
+    bytes = await enlargeTranslation(bytes, width, height);
+    logJob(
+      job.id,
+      "resize",
+      `${item.label}：${size.width}×${size.height} → ${width}×${height}，等比复制像素并补齐边缘`,
     );
   }
+  if (targetSpec) bytes = await prepareStoreImage(bytes, targetSpec, catalog);
   return (await storeAsset(bytes)).url;
 }
 export async function translateJob(job: Job) {

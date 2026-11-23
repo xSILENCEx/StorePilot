@@ -961,7 +961,7 @@ test("SQLite 工作流：登录、草稿、直调图像 API、去重、重启恢
         const modelFetch = globalThis.fetch;
         globalThis.fetch = async (url, init) =>
           String(url).endsWith("/images/edits")
-            ? Response.json({ data: [{ b64_json: bytes.toString("base64") }] })
+            ? Response.json({ data: [{ b64_json: Buffer.from("invalid image").toString("base64") }] })
             : modelFetch(url, init);
         assert.equal(
           (await run((await invalidImage.json()).ids[0])).status,
