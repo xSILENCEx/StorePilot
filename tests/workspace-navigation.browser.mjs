@@ -172,3 +172,29 @@ test(
     assert.match(await img.getAttribute("style"), /scale\(1\)/);
   },
 );
+
+test("顶栏电源按钮取消后保留会话，确认后退出", async (t) => {
+  const page = await workspacePage(t);
+  let calls = 0;
+  await page.route("**/api/apps", (route) =>
+    route.fulfill({ json: { apps: [], revision: 1, readVersion: "initial" } }),
+  );
+  await page.route("**/api/auth/sign-out", (route) => {
+    calls++;
+    return route.fulfill({ json: {} });
+  });
+  await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto(origin);
+  const power = page
+    .getByRole("navigation")
+    .getByRole("button", { name: "退出登录" });
+  const dialog = page.getByRole("dialog", { name: "退出登录" });
+  await power.click();
+  await dialog.getByRole("button", { name: "取消" }).click();
+  await dialog.waitFor({ state: "hidden" });
+  assert.equal(calls, 0);
+  await power.click();
+  await dialog.getByRole("button", { name: "确认退出" }).click();
+  await page.waitForURL("**/login");
+  assert.equal(calls, 1);
+});
