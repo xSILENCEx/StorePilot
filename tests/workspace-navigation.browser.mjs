@@ -198,3 +198,32 @@ test("顶栏电源按钮取消后保留会话，确认后退出", async (t) => {
   await page.waitForURL("**/login");
   assert.equal(calls, 1);
 });
+
+test("顶栏铺满视口，长页面在顶栏下方滚动", async (t) => {
+  const page = await workspacePage(t);
+  await page.route("**/api/apps", (route) =>
+    route.fulfill({ json: { apps: [], revision: 1, readVersion: "initial" } }),
+  );
+  await page.goto(origin);
+  await page.getByRole("heading", { name: "从第一个应用开始" }).waitFor();
+  await page.addStyleTag({
+    content: ".workspace-content { min-height: 200vh; }",
+  });
+  const layout = await page.evaluate(() => {
+    const header = document.querySelector("header").getBoundingClientRect();
+    const main = document.querySelector("main");
+    main.scrollTop = 100;
+    return {
+      right: header.right,
+      viewport: innerWidth,
+      top: main.getBoundingClientRect().top,
+      bottom: header.bottom,
+      contentScroll: main.scrollTop,
+      windowScroll: window.scrollY,
+    };
+  });
+  assert.equal(layout.right, layout.viewport);
+  assert.equal(layout.top, layout.bottom);
+  assert.equal(layout.contentScroll, 100);
+  assert.equal(layout.windowScroll, 0);
+});

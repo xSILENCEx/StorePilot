@@ -167,7 +167,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
             </Group>
           </Group>
         </AppShell.Header>
-        <AppShell.Main>
+        <AppShell.Main className="workspace-main">
           <Container size="xl" className="workspace-content">
             <NavigationContext.Provider value={setDetails}>
               {saveError && (
