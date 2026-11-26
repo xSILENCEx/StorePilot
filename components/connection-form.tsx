@@ -206,6 +206,7 @@ export function ConfigForm({
   function renderField(f: (typeof def.fields)[number]) {
     return f.options ? (
       <NativeSelect
+        size="md"
         key={f.key}
         label={f.label}
         description={f.hint}

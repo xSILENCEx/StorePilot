@@ -84,6 +84,14 @@ test(
       name: fixture.name + " · Apple App Store Connect",
     });
     await store.getByLabel("Issuer ID").waitFor();
+    await page.setViewportSize({ width: 1024, height: 800 });
+    const platformBox = await store.getByLabel("应用平台").boundingBox();
+    const versionBox = await store
+      .getByLabel("目标版本（可留空）")
+      .boundingBox();
+    assert.equal(platformBox.y, versionBox.y);
+    assert.equal(platformBox.height, versionBox.height);
+    await page.setViewportSize({ width: 360, height: 780 });
     await page.keyboard.press("Escape");
     await store.waitFor({ state: "hidden" });
     const title = page.getByPlaceholder("输入应用名称");
