@@ -156,10 +156,15 @@ test("图片生成、恢复与素材下载", async (t) => {
     },
   );
   await t.test("多选截图逐张生成，素材共享，重复提交不增加任务", async () => {
+    const full = await sharp(bytes)
+      .resize(1179, 2556, { fit: "fill" })
+      .png()
+      .toBuffer();
     const second = await sharp(bytes).resize(40, 60).png().toBuffer();
     const material = await sharp(bytes).resize(20, 30).png().toBuffer();
     const input = {
       ...target,
+      previewFirst: true,
       requestId: randomUUID(),
       deviceGroup: "IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY",
       screenshots: [reference.url, (await storeAsset(second)).url],
@@ -182,6 +187,7 @@ test("图片生成、恢复与素材下载", async (t) => {
         const job = claimJob(owner)!;
         const index = Number(job.input.screenshotIndex);
         seen.add(index);
+        let small = i === 0;
         globalThis.fetch = async (_url, init) => {
           assert.ok(init?.body instanceof FormData);
           const files = init.body.getAll("image[]") as File[];
@@ -192,10 +198,29 @@ test("图片生成、恢复与素材下载", async (t) => {
           );
           assert.deepEqual(Buffer.from(await files[1].arrayBuffer()), material);
           return Response.json({
-            data: [{ b64_json: bytes.toString("base64") }],
+            data: [{ b64_json: (small ? bytes : full).toString("base64") }],
           });
         };
         await executeJob(job);
+        if (i === 0) {
+          assert.equal(index, 0);
+          const load = () =>
+            db().select().from(jobs).where(eq(jobs.id, job.id)).get()!;
+          const { reviewDecision, pendingImage } =
+            await import("../lib/image-review");
+          assert.equal(load().status, "paused");
+          assert.equal(claimJob(owner), undefined);
+          reviewDecision(job.id, pendingImage(load())!.token, "retry");
+          small = false;
+          await executeJob(claimJob(owner)!);
+          assert.equal(pendingImage(load())!.sample, true);
+          assert.equal(claimJob(owner), undefined);
+          reviewDecision(job.id, pendingImage(load())!.token, "accept");
+          globalThis.fetch = async () => {
+            throw Error("unexpected call");
+          };
+          await executeJob(claimJob(owner)!);
+        }
         assert.equal(
           db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
           "succeeded",

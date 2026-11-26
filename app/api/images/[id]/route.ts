@@ -17,7 +17,7 @@ export async function DELETE(
         and(
           eq(jobs.id, id),
           eq(jobs.kind, "generate_image"),
-          notInArray(jobs.status, activeJobStatuses),
+          notInArray(jobs.status, [...activeJobStatuses, "paused"]),
         ),
       )
       .run();

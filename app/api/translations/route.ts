@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readWorkspace } from "../../../lib/workspace-store";
 import { draftLocales } from "../../../lib/store-locales";
 import { activeJobStatuses } from "../../../lib/job-status";
@@ -18,8 +19,9 @@ const input = z.object({
   mode: z.enum(["add", "update"]),
   source: z.string(),
   targets: z.array(z.string()).min(1).max(150),
+  previewFirst: z.boolean().optional(),
   selected: z.array(z.string()).min(1),
-  enhance: z.boolean().default(false),
+
   revision: z.number().int(),
 });
 export async function POST(request: Request) {
@@ -32,8 +34,8 @@ export async function POST(request: Request) {
       source,
       targets,
       selected,
+      previewFirst,
       revision,
-      enhance,
     } = input.parse(await request.json());
     const configs = {
       text: await readConfig("text"),
@@ -85,21 +87,30 @@ export async function POST(request: Request) {
               eq(jobs.app_id, appId),
               eq(jobs.platform, platform),
               eq(jobs.kind, "translate"),
-              inArray(jobs.status, activeJobStatuses),
+              inArray(jobs.status, [...activeJobStatuses, "paused"]),
             ),
           )
           .all();
         if (pending.some((j) => targets.includes(String(j.input.target))))
           throw new HttpError(409, "目标语言已有翻译任务，请等待完成");
-        return targets.map((target) =>
+        const batchId = randomUUID();
+        return targets.map((target, index) =>
           enqueue(
             {
               app_id: appId,
               platform,
               kind: "translate",
               input: {
-                enhance,
+                batchId,
                 source,
+                previewFirst:
+                  previewFirst &&
+                  index === 0 &&
+                  targets.length *
+                    items.filter(
+                      (i) => i.kind === "graphic" || i.kind === "screenshot",
+                    ).length >
+                    1,
                 target,
                 items,
                 identifier: app[platform],

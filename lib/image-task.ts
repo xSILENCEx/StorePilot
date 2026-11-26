@@ -1,3 +1,7 @@
+import { requestSizedImage } from "./sized-image-request";
+import { pauseImage, pendingImage } from "./image-review";
+import { dimensions, fitsTarget, resolutionLabel } from "./image-resolution";
+import { enlargeTranslation } from "./translation-upscale";
 import { maxImagePixels } from "./asset-reference";
 import { assetIdFromUrl, maxAssetBytes } from "./asset-reference";
 import { withModelFallback } from "./model-fallback";
@@ -11,7 +15,6 @@ import { configFields } from "./config-model";
 import { imageRequest } from "./image-model";
 import { assetPath, readFile, storeAsset } from "./storage";
 import {
-  callImageModel,
   savedReply,
   checkpointReply,
   replyBuffer,
@@ -28,7 +31,41 @@ export async function generateImageTask(job: Job) {
       ...request
     } = job.input;
     const { settings, screenshots } = imageRequest.parse(request);
-    let reply = await savedReply(job.id);
+    const review = pendingImage(job);
+    if (review?.sample && job.result?.decision === "accept") {
+      const asset = db()
+        .select()
+        .from(assets)
+        .where(eq(assets.id, assetIdFromUrl(review.url)))
+        .get();
+      if (!asset) throw new ImageGenerationError("样图不存在");
+      finishJob(job.id, "succeeded", {
+        url: review.url,
+        width: asset.width,
+        height: asset.height,
+        bytes: asset.bytes,
+        resolution: review,
+      });
+      return;
+    }
+    if (review && job.result?.decision === "enhance") {
+      const target = dimensions(review.target)!;
+      const bytes = await readFile(assetPath(assetIdFromUrl(review.url)));
+      const enhanced = await storeAsset(
+        await enlargeTranslation(bytes, target.width, target.height, true),
+      );
+      finishJob(job.id, "succeeded", {
+        url: enhanced.url,
+        width: enhanced.width,
+        height: enhanced.height,
+        bytes: enhanced.bytes,
+        resolution: review,
+        originalUrl: review.url,
+      });
+      return;
+    }
+    const attempt = review ? String(job.result?.attempt) : job.id;
+    let reply = await savedReply(attempt);
     if (!reply) {
       const config = await workerConfig("image");
       if (config.revision !== job.input.configRevision)
@@ -48,7 +85,7 @@ export async function generateImageTask(job: Job) {
         });
       }
       // Persist before sending. An interrupted request is never automatically sent again.
-      finishJob(job.id, "running", { sent: true });
+      finishJob(job.id, "running", { ...job.result, sent: true });
       sent = true;
       logJob(
         job.id,
@@ -56,18 +93,19 @@ export async function generateImageTask(job: Job) {
         references.length ? "调用图像编辑 API" : "调用图像生成 API",
       );
       reply = await withModelFallback(fields, job.id, (model, index) =>
-        callImageModel(
+        requestSizedImage(
+          job.id,
           { ...fields, model },
           config.secret,
           settings,
-          index === 0 ? job.id : randomUUID(),
+          index === 0 ? attempt : randomUUID(),
           references,
         ),
       );
-      await checkpointReply(job.id, reply);
+      await checkpointReply(attempt, reply);
     }
     received = true;
-    logJob(job.id, "save", "保存模型图片，保留模型输出尺寸");
+    logJob(job.id, "save", "读取并校验模型输出尺寸");
     const source = await replyBuffer(reply);
     const image = sharp(source, { limitInputPixels: maxImagePixels });
     const meta = await image.metadata();
@@ -76,6 +114,23 @@ export async function generateImageTask(job: Job) {
       (meta.pages ?? 1) > 1
     )
       throw new ImageGenerationError("模型未返回有效的静态图片");
+    const { width, height } = meta.autoOrient;
+    const resolution = {
+      ...(reply.sizing ?? {
+        model: "历史任务",
+        target: settings.modelSize,
+        requested: "未记录",
+      }),
+      returned: width + "x" + height,
+    };
+    logJob(job.id, "resolution", resolutionLabel(resolution));
+    const fits = fitsTarget(width, height, resolution.target);
+    const target = dimensions(resolution.target);
+    if (fits && target && (width !== target.width || height !== target.height))
+      image.resize(target.width, target.height, {
+        fit: "cover",
+        withoutEnlargement: true,
+      });
     const output = await image
       .rotate()
       .flatten({ background: "#ffffff" })
@@ -85,7 +140,16 @@ export async function generateImageTask(job: Job) {
     if (output.length > maxAssetBytes)
       throw new ImageGenerationError("生成图片超过 20 MB，请调整模型生成尺寸");
     const asset = await storeAsset(output);
+    if (fits && job.input.previewFirst && screenshotIndex === 0) {
+      pauseImage(job, resolution, asset.url, "首张样图", undefined, true);
+      return;
+    }
+    if (!fits) {
+      pauseImage(job, resolution, asset.url, "生成图片");
+      return;
+    }
     finishJob(job.id, "succeeded", {
+      resolution,
       url: asset.url,
       width: asset.width,
       height: asset.height,
@@ -93,6 +157,14 @@ export async function generateImageTask(job: Job) {
     });
     logJob(job.id, "complete", "图片已保存，可预览并加入商店截图");
   } catch (error) {
+    if (pendingImage(job)) {
+      finishJob(job.id, "paused", {
+        ...job.result,
+        review: { ...(job.result?.review as object), token: randomUUID() },
+        error: error instanceof Error ? error.message : "处理失败，请核对原图",
+      });
+      return;
+    }
     const known = error instanceof ImageGenerationError;
     const uncertain = known ? error.uncertain : sent && !received;
     const message = known

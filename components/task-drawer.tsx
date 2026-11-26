@@ -1,4 +1,6 @@
 "use client";
+import { ImageReviewActions } from "./image-review-actions";
+import type { ImageReview } from "../lib/image-resolution";
 import { readApiResponse } from "../lib/api-response";
 import { poll } from "../lib/poll";
 import { useEffect, useState } from "react";
@@ -25,6 +27,8 @@ type Task = {
   logs: { step: string; message: string }[];
 };
 const statuses: Record<string, string> = {
+  paused: "待确认尺寸",
+  cancelled: "已停止",
   queued: "排队中",
   running: "执行中",
   succeeded: "已完成",
@@ -131,6 +135,13 @@ export function TaskDrawer({
                   ))}
                   {typeof j.result?.error === "string" && (
                     <Alert color="orange">{j.result.error}</Alert>
+                  )}
+                  {j.status === "paused" && !!j.result?.review && (
+                    <ImageReviewActions
+                      key={(j.result.review as ImageReview).token}
+                      id={j.id}
+                      review={j.result.review as ImageReview}
+                    />
                   )}
                   {Array.isArray(j.result?.errors) && (
                     <Text size="sm">

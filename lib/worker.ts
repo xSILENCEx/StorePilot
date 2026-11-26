@@ -1,6 +1,6 @@
 import { workerContext } from "./worker-context";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, sqlite } from "./db";
 import { connectionConfigs, jobs } from "./schema";
 import { finishJob, logJob } from "./job-store";
@@ -26,11 +26,44 @@ export function claimJob(owner: string) {
         .get() as { owner: string; expires_at: number } | undefined;
       if (lease?.owner !== owner || lease.expires_at <= Date.now())
         throw new Error("Worker lease expired");
+      // A failed or interrupted sample cannot authorize paid calls for its siblings.
+      tx.update(jobs)
+        .set({
+          status: "cancelled",
+          result: { error: "首张样图任务未完成，同批后续任务已停止。" },
+        })
+        .where(
+          and(
+            eq(jobs.status, "queued"),
+            sql`exists (
+        select 1 from jobs sample where sample.app_id=${jobs.app_id} and sample.kind=${jobs.kind}
+        and sample.status in ('failed','uncertain') and json_extract(sample.input,'$.previewFirst')=1
+        and coalesce(json_extract(sample.input,'$.screenshotIndex'),0)=0
+        and coalesce(json_extract(sample.input,'$.batchId'),json_extract(sample.input,'$.requestId'))=
+        coalesce(json_extract(${jobs.input},'$.batchId'),json_extract(${jobs.input},'$.requestId'))
+      )`,
+          ),
+        )
+        .run();
       const next = tx
         .select()
         .from(jobs)
-        .where(eq(jobs.status, "queued"))
-        .orderBy(jobs.created_at, jobs.id)
+        .where(
+          and(
+            eq(jobs.status, "queued"),
+            sql`not exists (
+ select 1 from jobs blocker where blocker.id != ${jobs.id} and blocker.app_id = ${jobs.app_id} and blocker.kind = ${jobs.kind}
+ and blocker.status in ('paused','queued','running') and json_extract(blocker.result,'$.review.token') is not null
+ and coalesce(json_extract(blocker.input,'$.batchId'),json_extract(blocker.input,'$.requestId')) =
+ coalesce(json_extract(${jobs.input},'$.batchId'),json_extract(${jobs.input},'$.requestId'))
+ )`,
+          ),
+        )
+        .orderBy(
+          jobs.created_at,
+          sql`case when json_extract(${jobs.input},'$.previewFirst')=1 and coalesce(json_extract(${jobs.input},'$.screenshotIndex'),0)=0 then 0 else 1 end`,
+          jobs.id,
+        )
         .get();
       if (!next) return;
       return tx
@@ -49,6 +82,14 @@ export async function recoverJobs() {
     .from(jobs)
     .where(eq(jobs.status, "running"))
     .all()) {
+    if (job.result?.review) {
+      finishJob(job.id, "paused", {
+        ...job.result,
+        review: { ...(job.result?.review as object), token: randomUUID() },
+        error: "处理被中断，请核对后选择下一步。重新生成可能再次计费。",
+      });
+      continue;
+    }
     if (job.kind === "generate_image") {
       let reply;
       try {

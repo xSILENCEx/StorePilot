@@ -5,7 +5,9 @@ import { blankDraft } from "./model";
 import { withModelFallback } from "./model-fallback";
 import { enlargeTranslation } from "./translation-upscale";
 import type { AssetTarget } from "./asset-target";
-import { translationCanvas } from "./translation-image-size";
+import { requestSizedImage } from "./sized-image-request";
+import { pauseImage, pendingImage } from "./image-review";
+import { fitsTarget, resolutionLabel } from "./image-resolution";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
@@ -20,7 +22,6 @@ import { storeSnapshots, workspaces, type Job } from "./schema";
 import { configFields } from "./config-model";
 import { workerConfig } from "./config-store";
 import {
-  callImageModel,
   readLimited,
   replyBuffer,
   ImageGenerationError,
@@ -126,35 +127,70 @@ async function translateImage(
   item: TranslationItem,
   source: string,
   target: string,
+  values: Record<string, string>,
 ) {
-  const { fields, secret } = await model("image", job.input.imageRevision);
   const buffer = await readFile(assetPath(assetIdFromUrl(item.value)));
   const meta = await sharp(buffer).metadata();
   const { width, height } = meta.autoOrient;
-  const reply = await withModelFallback(fields, job.id, async (modelId) => {
-    const canvas = translationCanvas(modelId, width, height);
-    return callImageModel(
-      { ...fields, model: modelId },
-      secret,
-      {
-        prompt: `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${canvas}.`,
-        modelSize: canvas,
-        quality: "auto",
-        references: [],
-      },
-      randomUUID(),
-      [{ buffer, mime: meta.format === "jpeg" ? "image/jpeg" : "image/png" }],
+  const targetSize = width + "x" + height;
+  const review = pendingImage(job);
+  if (
+    review?.sample &&
+    review.item === item.id &&
+    job.result?.decision === "accept"
+  )
+    return review.url;
+  let sampleResolution: import("./image-resolution").Resolution | undefined;
+  let bytes: Buffer;
+  if (review?.item === item.id && job.result?.decision === "enhance") {
+    const raw = await readFile(assetPath(assetIdFromUrl(review.url)));
+    bytes = await enlargeTranslation(raw, width, height, true);
+  } else {
+    const { fields, secret } = await model("image", job.input.imageRevision);
+    const reply = await withModelFallback(fields, job.id, (modelId) =>
+      requestSizedImage(
+        job.id,
+        { ...fields, model: modelId },
+        secret,
+        { prompt: "", modelSize: targetSize, quality: "auto", references: [] },
+        randomUUID(),
+        [{ buffer, mime: meta.format === "jpeg" ? "image/jpeg" : "image/png" }],
+        (canvas) =>
+          `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${canvas}.`,
+      ),
     );
-  });
-  const image = sharp(await replyBuffer(reply), {
-    limitInputPixels: maxImagePixels,
-  });
-  const size = (await image.metadata()).autoOrient;
-  const closeRatio =
-    Math.min(size.width * height, size.height * width) >=
-    0.995 * Math.max(size.width * height, size.height * width);
-  const fitsOriginal =
-    closeRatio && size.width >= width && size.height >= height;
+    const image = sharp(await replyBuffer(reply), {
+      limitInputPixels: maxImagePixels,
+    });
+    const size = (await image.metadata()).autoOrient;
+    const resolution = {
+      ...reply.sizing,
+      returned: size.width + "x" + size.height,
+    };
+    logJob(
+      job.id,
+      "resolution",
+      item.label + " · " + resolutionLabel(resolution),
+    );
+    if (!fitsTarget(size.width, size.height, targetSize)) {
+      const raw = await storeAsset(await image.autoOrient().png().toBuffer());
+      pauseImage(job, resolution, raw.url, item.id, values);
+      return;
+    }
+    if (
+      job.input.previewFirst &&
+      item.id ===
+        (job.input.items as TranslationItem[]).find(
+          (i) => i.kind === "graphic" || i.kind === "screenshot",
+        )?.id
+    )
+      sampleResolution = resolution;
+    bytes = await image
+      .autoOrient()
+      .resize(width, height, { fit: "cover", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+  }
   const targetSpec: AssetTarget | undefined =
     item.kind === "graphic"
       ? { kind: "graphic", platform: "google", type: item.field }
@@ -175,29 +211,13 @@ async function translateImage(
           .where(eq(storeSnapshots.app_id, job.app_id))
           .get()?.current_snapshot.deviceGroups
       : undefined;
-  const pipeline = image.autoOrient();
-  if (fitsOriginal)
-    pipeline.resize(width, height, { fit: "cover", withoutEnlargement: true });
-  let bytes: Buffer = await pipeline.png().toBuffer();
-  if (closeRatio && targetSpec) {
-    try {
-      const native = await prepareStoreImage(bytes, targetSpec, catalog);
-      return (await storeAsset(native)).url;
-    } catch (e) {
-      if (!(e instanceof ImageSizeError) || fitsOriginal) throw e;
-    }
-  }
-  if (!fitsOriginal) {
-    const enhance = job.input.enhance === true;
-    bytes = await enlargeTranslation(bytes, width, height, enhance);
-    logJob(
-      job.id,
-      "resize",
-      `${item.label}：${size.width}×${size.height} → ${width}×${height}，${enhance ? "waifu2x 超分辨率适配" : "等比复制像素并补齐边缘"}`,
-    );
-  }
   if (targetSpec) bytes = await prepareStoreImage(bytes, targetSpec, catalog);
-  return (await storeAsset(bytes)).url;
+  const asset = await storeAsset(bytes);
+  if (sampleResolution) {
+    pauseImage(job, sampleResolution, asset.url, item.id, values, true);
+    return;
+  }
+  return asset.url;
 }
 export async function translateJob(job: Job) {
   const { source, target, identifier } = job.input;
@@ -207,9 +227,18 @@ export async function translateJob(job: Job) {
   const key = platform + ":" + target;
   try {
     logJob(job.id, "start", `${source} → ${target} · ${items.length} 项`);
-    const values: Record<string, string> = {};
+    const app = readWorkspace()?.apps.find((a) => a.id === job.app_id);
+    if (
+      !app ||
+      app[platform] !== identifier ||
+      !isDeepStrictEqual(app.drafts[key] ?? null, before)
+    )
+      throw new TranslationError("目标草稿已变更，请检查后重新翻译");
+    const values: Record<string, string> = {
+      ...(job.result?.values as Record<string, string>),
+    };
     const texts = items.filter((i) => i.kind === "text");
-    if (texts.length)
+    if (texts.some((i) => !(i.id in values)))
       Object.assign(
         values,
         await translateText(job, texts, String(source), String(target)),
@@ -264,7 +293,7 @@ export async function translateJob(job: Job) {
         );
     }
     for (const item of items) {
-      if (item.kind === "text") continue;
+      if (item.kind === "text" || item.id in values) continue;
       assertWorkerActive();
       if (item.kind === "link") values[item.id] = item.value;
       else {
@@ -273,12 +302,19 @@ export async function translateJob(job: Job) {
           "image",
           `${target} · ${item.kind === "screenshot" ? item.device + " · " : ""}${item.label}`,
         );
-        values[item.id] = await translateImage(
+        const url = await translateImage(
           job,
           item,
           String(source),
           String(target),
+          values,
         );
+        if (!url) return;
+        values[item.id] = url;
+        if (pendingImage(job)) {
+          job.result = { ...job.result, values: { ...values } };
+          finishJob(job.id, "running", job.result);
+        }
       }
     }
     const translated = draftSchema.parse(
@@ -313,6 +349,14 @@ export async function translateJob(job: Job) {
       { behavior: "immediate" },
     );
   } catch (e) {
+    if (pendingImage(job)) {
+      finishJob(job.id, "paused", {
+        ...job.result,
+        review: { ...(job.result?.review as object), token: randomUUID() },
+        error: e instanceof Error ? e.message : "处理失败，请核对原图",
+      });
+      return;
+    }
     finishJob(
       job.id,
       e instanceof ImageGenerationError && e.uncertain ? "uncertain" : "failed",

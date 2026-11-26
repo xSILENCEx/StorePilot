@@ -61,10 +61,8 @@ export async function enlargeTranslation(
   const image = sharp(bytes, { limitInputPixels: maxImagePixels });
   const size = (await image.metadata()).autoOrient;
   const scale = Math.min(width / size.width, height / size.height);
-  if (scale < 1)
-    throw new ImageSizeError(
-      `模型输出 ${size.width}×${size.height} 无法在保留全部像素的情况下放入 ${width}×${height}`,
-    );
+  if (scale < 1 && !enhance)
+    throw new ImageSizeError("画布太小，无法保留全部像素");
   const w = Math.round(size.width * scale),
     h = Math.round(size.height * scale);
   const left = Math.floor((width - w) / 2),

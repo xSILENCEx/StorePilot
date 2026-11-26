@@ -17,7 +17,11 @@ export type ImageModelConfig = {
   baseUrl: string;
   timeoutSeconds: number;
 };
-export type ImageReply = { b64_json?: string; url?: string };
+export type ImageReply = {
+  b64_json?: string;
+  url?: string;
+  sizing?: { model: string; target: string; requested: string };
+};
 export function responsePath(id: string) {
   if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error("Invalid image request id");
   return path.join(
@@ -243,7 +247,9 @@ export async function downloadImage(raw: string, depth = 0): Promise<Buffer> {
       reject(new ImageGenerationError("生成图片下载超时，可重试处理"));
     });
     request.on("error", () =>
-      reject(new ImageGenerationError("生成图片下载连接失败，请检查服务端网络")),
+      reject(
+        new ImageGenerationError("生成图片下载连接失败，请检查服务端网络"),
+      ),
     );
   });
 }

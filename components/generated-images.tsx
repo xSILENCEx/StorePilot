@@ -1,4 +1,6 @@
 "use client";
+import { ImageReviewActions } from "./image-review-actions";
+import { resolutionLabel } from "../lib/image-resolution";
 import { isJobActive } from "../lib/job-status";
 import { ImagePreview } from "./image-preview";
 import { BatchDownload } from "./batch-download";
@@ -20,6 +22,8 @@ import { ArrowRight, ImagePlus, Sparkles, Trash2 } from "lucide-react";
 import type { ImageRecord } from "../lib/image-model";
 import type { Platform } from "../lib/model";
 const statuses: Record<string, string> = {
+  paused: "待确认尺寸",
+  cancelled: "已停止",
   queued: "排队中",
   running: "正在生成",
   succeeded: "已生成",
@@ -151,17 +155,18 @@ export function GeneratedImageResults({
                     >
                       {statuses[image.status]}
                     </Badge>
-                    {!isJobActive(image.status) && (
-                      <ActionIcon
-                        variant="subtle"
-                        color="gray"
-                        aria-label="删除生成记录"
-                        loading={deleting === image.id}
-                        onClick={() => void remove(image.id)}
-                      >
-                        <Trash2 size={14} />
-                      </ActionIcon>
-                    )}
+                    {!isJobActive(image.status) &&
+                      image.status !== "paused" && (
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          aria-label="删除生成记录"
+                          loading={deleting === image.id}
+                          onClick={() => void remove(image.id)}
+                        >
+                          <Trash2 size={14} />
+                        </ActionIcon>
+                      )}
                   </Group>
                   {image.input.screenshotIndex != null && (
                     <Text size="sm">
@@ -177,7 +182,19 @@ export function GeneratedImageResults({
                       {image.result.error}
                     </Text>
                   )}
-                  {image.result?.url && (
+                  {image.status === "paused" && image.result?.review && (
+                    <ImageReviewActions
+                      key={image.result.review.token}
+                      id={image.id}
+                      review={image.result.review}
+                    />
+                  )}
+                  {image.result?.resolution && (
+                    <Text size="xs">
+                      {resolutionLabel(image.result.resolution)}
+                    </Text>
+                  )}
+                  {image.status === "succeeded" && image.result?.url && (
                     <Button
                       size="xs"
                       variant="light"
@@ -235,7 +252,7 @@ export function GeneratedImagePreview({
         )
       }
     >
-      {preview?.result?.url && (
+      {preview?.status === "succeeded" && preview.result?.url && (
         <Button
           disabled={disabled || alreadyAdded(preview.result.url)}
           onClick={() => add(preview)}

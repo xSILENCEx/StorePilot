@@ -1,3 +1,4 @@
+import type { ImageReview, Resolution } from "./image-resolution";
 import { localeCode } from "./store-locales";
 import { assetUrl } from "./asset-reference";
 import {
@@ -51,6 +52,7 @@ export const imageRequest = imageTarget
   .extend({
     deviceGroup: deviceGroup.optional(),
     requestId: z.uuid(),
+    previewFirst: z.boolean().optional(),
     settings: imageSettings,
     screenshots: z.array(assetUrl).min(1).max(50).optional(),
   })
@@ -77,6 +79,9 @@ export type ImageRecord = {
     screenshotIndex?: number;
   };
   result: {
+    review?: ImageReview;
+    resolution?: Resolution;
+    originalUrl?: string;
     url?: string;
     width?: number;
     height?: number;

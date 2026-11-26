@@ -188,7 +188,7 @@ export function TranslationDialog({
   );
   const [targets, setTargets] = useState<string[]>([]);
   const [step, setStep] = useState(1);
-  const [enhance, setEnhance] = useState(true);
+
   const [method, setMethod] = useState("ai");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -220,13 +220,14 @@ export function TranslationDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          previewFirst: true,
           appId: app.id,
           platform,
           source,
           targets,
           mode,
           selected,
-          enhance: imageCount > 0 && enhance,
+
           revision,
         }),
       });
@@ -342,12 +343,9 @@ export function TranslationDialog({
                   </Text>
                 )}
                 {imageCount > 0 && (
-                  <Checkbox
-                    label="尺寸不足时使用 waifu2x 超分辨率"
-                    description="平滑放大边缘，细小文字可能发生变化。"
-                    checked={enhance}
-                    onChange={(e) => setEnhance(e.currentTarget.checked)}
-                  />
+                  <Text size="sm">
+                    批量翻译先生成一张样图。在任务记录中确认后继续。尺寸不足时可查看原图，选择超分、重新生成或停止批次。
+                  </Text>
                 )}
                 <Text size="sm" c="dimmed">
                   {source} → {targets.length} 种语言，每种处理 {selected.length}{" "}

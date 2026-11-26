@@ -1,11 +1,7 @@
 // GPT Image 2 custom canvases use 16-pixel increments. Request a native
 // canvas that can be downsampled to the store asset without visible cropping.
-export function translationCanvas(
-  model: string,
-  width: number,
-  height: number,
-) {
-  if (!/^gpt-image-2(?:$|-)/.test(model)) return width + "x" + height;
+export function modelCanvas(model: string, width: number, height: number) {
+  if (!/^gpt-image-2(?:\.\d+)?(?:$|-)/.test(model)) return width + "x" + height;
   const ratio = width / height;
   const candidates: { w: number; h: number }[] = [];
   for (let w = 16; w <= 3840; w += 16) {

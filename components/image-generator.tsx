@@ -133,6 +133,7 @@ export function ImageGenerator({
           locale,
           deviceGroup,
           ...pending.current,
+          previewFirst: pending.current.screenshots.length > 1,
         }),
       });
       const data = await response.json();

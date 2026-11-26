@@ -1,6 +1,7 @@
+import { reviewDecision } from "../../../lib/image-review";
 import { findWorkspaceApp } from "../../../lib/workspace-store";
 import { z } from "zod";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { sql, and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../../lib/db";
 import { jobs, jobLogs } from "../../../lib/schema";
 import { enqueue } from "../../../lib/job-store";
@@ -16,7 +17,10 @@ export async function GET(request: Request) {
       .select()
       .from(jobs)
       .where(appId ? eq(jobs.app_id, appId) : undefined)
-      .orderBy(desc(jobs.created_at))
+      .orderBy(
+        sql`case when ${jobs.status}='paused' then 0 else 1 end`,
+        desc(jobs.created_at),
+      )
       .limit(30)
       .all();
     const logs = rows.length
@@ -35,6 +39,7 @@ export async function GET(request: Request) {
     return json({
       jobs: rows.map(({ input, ...j }) => ({
         ...j,
+        result: j.result ? { ...j.result, values: undefined } : j.result,
         ...(j.kind === "translate"
           ? { languages: String(input.source) + " → " + String(input.target) }
           : {}),
@@ -51,9 +56,19 @@ export async function POST(request: Request) {
     const input = z
       .union([
         z.object({ appId: z.uuid(), platform: z.enum(["apple", "google"]) }),
+        z.object({
+          reviewId: z.uuid(),
+          token: z.uuid(),
+          decision: z.enum(["accept", "enhance", "retry", "cancel"]),
+        }),
         z.object({ retryId: z.uuid() }),
       ])
       .parse(await request.json());
+    if ("reviewId" in input)
+      return json(
+        { id: reviewDecision(input.reviewId, input.token, input.decision) },
+        202,
+      );
     const id = db().transaction(
       (tx) => {
         let app;

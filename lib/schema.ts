@@ -65,7 +65,15 @@ export const jobs = sqliteTable(
       ],
     }).notNull(),
     status: text("status", {
-      enum: ["queued", "running", "succeeded", "failed", "uncertain"],
+      enum: [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "uncertain",
+        "paused",
+        "cancelled",
+      ],
     })
       .notNull()
       .default("queued"),
