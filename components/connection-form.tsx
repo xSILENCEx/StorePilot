@@ -37,7 +37,7 @@ export function ConfigForm({
   scope: ConfigScope;
   app?: App;
   onDirty: (dirty: boolean) => void;
-  onSaved: () => void;
+  onSaved?: () => void;
 }) {
   const def = definitions[scope];
   const endpoint = settingsUrl(scope, app?.id);
@@ -108,7 +108,7 @@ export function ConfigForm({
             return;
           }
           setVerification(data.verification);
-          if (!isJobActive(data.verification?.status)) onSaved();
+          if (!isJobActive(data.verification?.status)) onSaved?.();
         } catch {
           if (!signal.aborted)
             setMessage("暂时无法读取验证状态，稍后自动重试。");
@@ -138,7 +138,7 @@ export function ConfigForm({
       setSecret("");
       setDirty(false);
       setVerification(data.verification);
-      onSaved();
+      onSaved?.();
       if (scope === "text" || scope === "image") {
         setFields({ ...defaults, ...data.fields });
         await verify(false, data.revision);
@@ -172,7 +172,7 @@ export function ConfigForm({
         message: "验证任务已入队",
         jobId: data.id,
       });
-      onSaved();
+      onSaved?.();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "验证失败");
     } finally {
@@ -191,7 +191,7 @@ export function ConfigForm({
       });
       const data = await readApiResponse(r);
       await load();
-      onSaved();
+      onSaved?.();
       notifications.show({ message: "配置已清除" });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "清除失败");

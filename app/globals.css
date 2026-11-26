@@ -208,28 +208,7 @@ a {
   pointer-events: none;
 }
 
-@media (min-width: 48em) {
-  .workspace-nav {
-    overflow: hidden;
-    white-space: nowrap;
-    transition-property: width, transform;
-  }
-  .workspace-nav:not([data-dismissed]):is(:hover, :has(:focus-visible)) {
-    width: 230px;
-  }
-  .workspace-nav:is([data-dismissed], :not(:hover):not(:has(:focus-visible)))
-    :is(.mantine-NavLink-body, .mantine-Button-label) {
-    opacity: 0;
-  }
-  .workspace-nav .mantine-Button-inner {
-    overflow: visible;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .workspace-nav {
-    transition-duration: 0s;
-  }
-}
+
 
 .locale-workspace {
   display: grid;

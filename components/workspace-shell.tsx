@@ -6,15 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   AppShell,
   Alert,
-  Burger,
   Group,
   Text,
   ThemeIcon,
-  NavLink,
-  Stack,
   Button,
   Container,
-  Box,
 } from "@mantine/core";
 import { Layers, Settings2, LogOut, Activity } from "lucide-react";
 import { TaskDrawer } from "./task-drawer";
@@ -72,102 +68,63 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const workspace = useWorkspace(setSaveError);
   const settings = usePathname() === "/settings";
   const [details, setDetails] = useState<NavigationDetails>({});
-  const title = settings ? "连接与模型" : (details.title ?? "应用管理");
-  const [dismissed, setDismissed] = useState(false);
-  function closeNavigation() {
-    setOpened(false);
-    setDismissed(true);
-  }
-  const [opened, setOpened] = useState(false);
+  const title = settings ? "模型配置" : (details.title ?? "应用管理");
   const [tasks, setTasks] = useState(false);
   return (
     <DraftContext.Provider value={workspace}>
       <AppShell
         header={{ height: 70 }}
-        navbar={{ width: 64, breakpoint: "sm", collapsed: { mobile: !opened } }}
+
         padding={0}
       >
         <AppShell.Header>
           <Group h="100%" px="lg" justify="space-between">
             <Group gap="sm">
-              <Burger
-                opened={opened}
-                onClick={() => setOpened(!opened)}
-                hiddenFrom="sm"
-                size="sm"
-                aria-label="切换导航"
-              />
-              <Link href="/" className="brand">
+              <WorkspaceLink
+                href="/"
+                className="brand"
+                aria-label="StorePilot 应用管理"
+              >
                 <Group gap="xs">
                   <ThemeIcon size={34} radius="md">
                     <Layers size={20} />
                   </ThemeIcon>
-                  <Text fw={750} size="lg" c="dark.8">
+                  <Text visibleFrom="xs" fw={750} size="lg" c="dark.8">
                     StorePilot
                   </Text>
                 </Group>
-              </Link>
+              </WorkspaceLink>
               <Text c="dimmed" size="sm" visibleFrom="sm" ml="xl">
                 工作空间 / {title}
               </Text>
             </Group>
+            <Group
+              component="nav"
+              aria-label="工作区导航"
+              gap="xs"
+              wrap="nowrap"
+            >
+              <Button
+                component={WorkspaceLink}
+                href="/settings"
+                variant={settings ? "light" : "subtle"}
+                aria-current={settings ? "page" : undefined}
+                size="sm"
+                leftSection={<Settings2 size={16} />}
+              >
+                模型配置
+              </Button>
+              <Button
+                variant="subtle"
+                size="sm"
+                leftSection={<Activity size={16} />}
+                onClick={() => setTasks(true)}
+              >
+                任务记录
+              </Button>
+            </Group>
           </Group>
         </AppShell.Header>
-        <AppShell.Navbar
-          className="workspace-nav"
-          py="md"
-          px="xs"
-          data-dismissed={dismissed || undefined}
-          onPointerLeave={() => setDismissed(false)}
-          onFocusCapture={() => setDismissed(false)}
-        >
-          <Stack gap={6} h="100%">
-            <NavLink
-              onNavigate={closeNavigation}
-              component={WorkspaceLink}
-              href="/"
-              active={!settings}
-              label="应用管理"
-              leftSection={<Layers size={18} />}
-            />
-            <NavLink
-              onNavigate={closeNavigation}
-              component={WorkspaceLink}
-              href="/settings"
-              active={settings}
-              label="连接与模型"
-              leftSection={<Settings2 size={18} />}
-            />
-            <NavLink
-              component="button"
-              label="任务记录"
-              leftSection={<Activity size={18} />}
-              onClick={() => {
-                setTasks(true);
-                closeNavigation();
-              }}
-            />
-            <Box style={{ flex: 1 }} />
-            <Button
-              variant="subtle"
-              color="gray"
-              justify="start"
-              px="sm"
-              leftSection={<LogOut size={16} />}
-              disabled={!workspace.saved || workspace.blocked}
-              onClick={async () => {
-                const r = await fetch("/api/auth/sign-out", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: "{}",
-                });
-                if (r.ok) location.href = "/login";
-              }}
-            >
-              退出登录
-            </Button>
-          </Stack>
-        </AppShell.Navbar>
         <AppShell.Main>
           <Container size="xl" className="workspace-content">
             <NavigationContext.Provider value={setDetails}>
@@ -181,6 +138,26 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 </Alert>
               )}
               {children}
+              <Group component="footer" justify="end" mt="xl">
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  justify="start"
+                  px="sm"
+                  leftSection={<LogOut size={16} />}
+                  disabled={!workspace.saved || workspace.blocked}
+                  onClick={async () => {
+                    const r = await fetch("/api/auth/sign-out", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: "{}",
+                    });
+                    if (r.ok) location.href = "/login";
+                  }}
+                >
+                  退出登录
+                </Button>
+              </Group>
             </NavigationContext.Provider>
           </Container>
         </AppShell.Main>

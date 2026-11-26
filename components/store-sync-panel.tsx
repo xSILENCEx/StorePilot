@@ -7,7 +7,7 @@ import { isJobActive } from "../lib/job-status";
 import { poll } from "../lib/poll";
 import { ImagePreview } from "./image-preview";
 import { StoreGraphics, StoreScreenshots } from "./store-snapshot-media";
-import { WorkspaceLink } from "./workspace-shell";
+
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -46,6 +46,7 @@ export function StoreSyncPanel({
   locale,
   enabled,
   onImport,
+  onConfigure,
   onCatalog,
   onPrimary,
 }: {
@@ -53,6 +54,7 @@ export function StoreSyncPanel({
   platform: Platform;
   locale: string;
   enabled: boolean;
+  onConfigure: () => void;
   onPrimary: (value: { scope: string; locale?: string }) => void;
   onCatalog: (catalog: AppleSnapshot["deviceGroups"]) => void;
   onImport: (
@@ -200,9 +202,16 @@ export function StoreSyncPanel({
           {!enabled && (
             <Alert color="orange">
               请先保存草稿并完成{" "}
-              <WorkspaceLink href={`/settings?appId=${app.id}`}>
+              <Button
+                size="compact-xs"
+                variant="transparent"
+                onClick={() => {
+                  setOpened(false);
+                  onConfigure();
+                }}
+              >
                 {store} 连接配置
-              </WorkspaceLink>
+              </Button>
               。
             </Alert>
           )}

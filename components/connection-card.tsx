@@ -39,8 +39,6 @@ export function ConnectionCard({
   const [state, setState] = useState<Summary | null>(null);
   const [error, setError] = useState("");
   const [opened, setOpened] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [discard, setDiscard] = useState(false);
   const [version, setVersion] = useState(0);
   const endpoint = settingsUrl(scope, app?.id);
   const refreshing = isJobActive(state?.verification?.status);
@@ -135,7 +133,6 @@ export function ConnectionCard({
             rightSection={<ChevronRight size={15} />}
             justify="space-between"
             onClick={() => {
-              setDiscard(false);
               setOpened(true);
             }}
           >
@@ -143,51 +140,80 @@ export function ConnectionCard({
           </Button>
         </Stack>
       </Paper>
-      <Modal
-        opened={opened}
-        onClose={() => {
-          if (dirty) setDiscard(true);
-          else setOpened(false);
-        }}
-        closeOnClickOutside={false}
-        title={def.title}
-        size="700px"
-      >
-        {discard && (
-          <Alert color="orange" title="有未保存的修改" mb="lg">
-            <Text size="sm">继续编辑，或丢弃修改后关闭。</Text>
-            <Group mt="sm">
-              <Button
-                size="xs"
-                variant="default"
-                onClick={() => setDiscard(false)}
-              >
-                继续编辑
-              </Button>
-              <Button
-                size="xs"
-                color="orange"
-                onClick={() => {
-                  setOpened(false);
-                  setDirty(false);
-                  setDiscard(false);
-                }}
-              >
-                丢弃并关闭
-              </Button>
-            </Group>
-          </Alert>
-        )}
-        {opened && (
-          <ConfigForm
-            key={`${scope}:${app?.id ?? "global"}`}
-            scope={scope}
-            app={app}
-            onDirty={setDirty}
-            onSaved={reload}
-          />
-        )}
-      </Modal>
+      {opened && (
+        <ConnectionDialog
+          scope={scope}
+          app={app}
+          onClose={() => setOpened(false)}
+          onSaved={reload}
+        />
+      )}
     </>
+  );
+}
+
+export function ConnectionDialog({
+  scope,
+  app,
+  onClose,
+  onSaved,
+}: {
+  scope: ConfigScope;
+  app?: App;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
+  const [dirty, setDirty] = useState(false);
+  const [discard, setDiscard] = useState(false);
+  return (
+    <Modal
+      opened
+      onClose={() => {
+        if (dirty) setDiscard(true);
+        else onClose();
+      }}
+      closeOnClickOutside={false}
+      title={
+        app
+          ? app.name + " · " + definitions[scope].title
+          : definitions[scope].title
+      }
+      size="700px"
+    >
+      {discard && (
+        <Alert color="orange" title="有未保存的修改" mb="lg">
+          <Text size="sm">继续编辑，或丢弃修改后关闭。</Text>
+          <Group mt="sm">
+            <Button
+              size="xs"
+              variant="default"
+              onClick={() => setDiscard(false)}
+            >
+              继续编辑
+            </Button>
+            <Button
+              size="xs"
+              color="orange"
+              onClick={() => {
+                onClose();
+                setDirty(false);
+                setDiscard(false);
+              }}
+            >
+              丢弃并关闭
+            </Button>
+          </Group>
+        </Alert>
+      )}
+      {
+        <ConfigForm
+          key={`${scope}:${app?.id ?? "global"}`}
+          scope={scope}
+          app={app}
+          onDirty={setDirty}
+          onSaved={onSaved}
+        />
+      }
+    </Modal>
   );
 }

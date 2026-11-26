@@ -54,6 +54,10 @@ test(
     let conflict = false;
     await page.route("**/api/**", async (route) => {
       const request = route.request();
+      if (new URL(request.url()).pathname.startsWith("/api/settings/"))
+        return route.fulfill({ json: { fields: {}, revision: 0 } });
+      if (new URL(request.url()).pathname === "/api/jobs")
+        return route.fulfill({ json: { jobs: [] } });
       if (new URL(request.url()).pathname !== "/api/apps")
         return route.fulfill({ json: {} });
       if (request.method() === "GET") return route.fulfill({ json: workspace });
@@ -71,6 +75,17 @@ test(
     });
     await page.goto(origin);
     await page.getByText(fixture.name, { exact: true }).click();
+    await page.setViewportSize({ width: 360, height: 780 });
+    const nav = page.getByRole("navigation", { name: "工作区导航" });
+    await nav.getByRole("button", { name: "任务记录" }).click();
+    await page.getByRole("button", { name: "关闭任务记录" }).click();
+    await page.getByRole("button", { name: "商店配置" }).click();
+    const store = page.getByRole("dialog", {
+      name: fixture.name + " · Apple App Store Connect",
+    });
+    await store.getByLabel("Issuer ID").waitFor();
+    await page.keyboard.press("Escape");
+    await store.waitFor({ state: "hidden" });
     const title = page.getByPlaceholder("输入应用名称");
     const settings = page.locator('a[href="/settings"]');
     await title.fill("已修改");
@@ -79,6 +94,11 @@ test(
     assert.equal(new URL(page.url()).pathname, "/");
     release.resolve();
     await page.waitForURL("**/settings");
+    await page.getByRole("heading", { name: "模型配置" }).waitFor();
+    assert.equal(
+      await page.getByRole("button", { name: "管理配置" }).count(),
+      2,
+    );
     assert.equal(workspace.apps[0].drafts["apple:en-US"].title, "已修改");
     await page.goto(origin);
     await page.getByText(fixture.name, { exact: true }).click();

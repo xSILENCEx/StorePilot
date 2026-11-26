@@ -1,11 +1,11 @@
 "use client";
+import { ConnectionDialog } from "../../components/connection-card";
 import { settingsUrl } from "../../components/connection-fields";
 import { readApiResponse } from "../../lib/api-response";
 import { draftLocales } from "../../lib/store-locales";
 import { blankDraft } from "../../lib/model";
 import { downloadBlob } from "../../lib/download-blob";
 import {
-  WorkspaceLink,
   useWorkspaceDrafts,
   useWorkspaceNavigation,
 } from "../../components/workspace-shell";
@@ -49,6 +49,7 @@ export default function Home() {
   const [platform, setPlatform] = useState<Platform>("apple");
   const [catalog, setCatalog] = useState<DeviceGroup[]>();
   const [locale, setLocale] = useState("en-US");
+  const [storeSettings, setStoreSettings] = useState(false);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [languageModal, setLanguageModal] = useState<"add" | "update" | null>(
@@ -82,7 +83,7 @@ export default function Home() {
     connection.platform === platform &&
     connection.configured;
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || storeSettings) return;
     const controller = new AbortController();
     void fetch(settingsUrl(platform, selected), {
       cache: "no-store",
@@ -101,7 +102,7 @@ export default function Home() {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [selected, platform]);
+  }, [selected, platform, storeSettings]);
   function update(
     patch: Partial<Draft> | ((current: Draft) => Partial<Draft>),
   ) {
@@ -321,17 +322,17 @@ export default function Home() {
                   ))}
                 </Button.Group>
                 <Button
-                  component={WorkspaceLink}
-                  href={`/settings?appId=${app.id}`}
+                  onClick={() => setStoreSettings(true)}
                   variant="subtle"
                   size="xs"
                   color={connectionConfigured ? "green" : "gray"}
                 >
+                  商店配置
                   {connectionConfigured
                     ? connection?.verified
-                      ? "连接已验证"
-                      : "已配置连接"
-                    : "配置商店连接"}
+                      ? " · 已验证"
+                      : " · 已配置"
+                    : ""}
                   <ArrowRight size={12} style={{ marginLeft: 6 }} />
                 </Button>
               </Group>
@@ -345,6 +346,7 @@ export default function Home() {
                     翻译到其他语言
                   </Button>
                   <StoreSyncPanel
+                    onConfigure={() => setStoreSettings(true)}
                     key={app.id + platform}
                     platform={platform}
                     app={app}
@@ -517,6 +519,13 @@ export default function Home() {
           </>
         )}
       </Stack>
+      {storeSettings && app && (
+        <ConnectionDialog
+          scope={platform}
+          app={app}
+          onClose={() => setStoreSettings(false)}
+        />
+      )}
       {modal && (
         <AppSettingsDialog
           app={apps.find((value) => value.id === editing)}
