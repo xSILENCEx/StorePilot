@@ -17,7 +17,7 @@ test("Apple joins application and version fields, follows pagination and preserv
   assert.equal(snapshot.locales["en-US"].appInfoLocalizationId, "il1");
   assert.equal(snapshot.locales["zh-Hans"].versionLocalizationId, null);
 });
-test("Blank version selects published first, otherwise latest; app info follows the selected version state", async () => {
+test("Blank version prefers the latest unreleased version; app info follows the selected version state", async () => {
   const withoutVersion = {
     ...config,
     fields: { ...config.fields, version: "" },
@@ -47,8 +47,23 @@ test("Blank version selects published first, otherwise latest; app info follows 
       ],
     }),
   );
-  assert.equal(snapshot.target.versionId, "live-1");
-  assert.equal(snapshot.target.appInfoId, "info2");
+  assert.equal(snapshot.target.versionId, "draft-2");
+  assert.equal(snapshot.target.appInfoId, "info1");
+  const publishedOnly = await readAppleSnapshot(
+    withoutVersion,
+    "",
+    mockApple({
+      versions: ["1.9", "1.10"].map((v) => ({
+        id: v,
+        attributes: {
+          platform: "IOS",
+          versionString: v,
+          appVersionState: "READY_FOR_DISTRIBUTION",
+        },
+      })),
+    }),
+  );
+  assert.equal(publishedOnly.target.version, "1.10");
   const latest = await readAppleSnapshot(
     withoutVersion,
     "",

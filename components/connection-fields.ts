@@ -33,7 +33,7 @@ export const definitions: Record<
       {
         key: "appId",
         label: "Apple 数字应用 ID",
-        hint: "App Store Connect 中的 Apple ID，不是 Bundle ID",
+        hint: "见 App Store Connect 的「App 信息」",
       },
       { key: "bundleId", label: "Bundle ID" },
       {
@@ -44,7 +44,7 @@ export const definitions: Record<
       {
         key: "version",
         label: "目标版本（可留空）",
-        hint: "留空自动读取已上架版本；没有已上架版本时读取最新版本",
+        hint: "留空优先同步最新未上架版本，其次同步最新已上架版本。",
       },
     ],
     secret: "App Store Connect API 私钥（.p8）",

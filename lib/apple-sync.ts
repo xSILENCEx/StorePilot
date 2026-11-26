@@ -258,6 +258,15 @@ function state(row: Resource) {
   );
 }
 const published = new Set(["READY_FOR_DISTRIBUTION", "READY_FOR_SALE"]);
+const removed = new Set([
+  "REMOVED_FROM_SALE",
+  "DEVELOPER_REMOVED_FROM_SALE",
+  "REPLACED_WITH_NEW_VERSION",
+]);
+function versionPriority(version: Resource) {
+  const status = state(version);
+  return published.has(status) ? 1 : removed.has(status) ? 2 : 0;
+}
 function selectVersion(versions: Resource[], requested: string) {
   if (!versions.length)
     throw new AppleReadError(
@@ -272,7 +281,7 @@ function selectVersion(versions: Resource[], requested: string) {
   }
   return [...versions].sort(
     (a, b) =>
-      Number(published.has(state(b))) - Number(published.has(state(a))) ||
+      versionPriority(a) - versionPriority(b) ||
       String(b.attributes.versionString).localeCompare(
         String(a.attributes.versionString),
         "en",

@@ -230,7 +230,7 @@ export function StoreSyncPanel({
                   ? `${Object.keys(snapshot.locales).length} 种语言 · ${screenshotCount} 张截图 · ${new Date(snapshot.fetchedAt).toLocaleString()}`
                   : !apple
                     ? "读取当前 Google Play 主商店详情。"
-                    : "未指定版本时，优先读取已上架版本，否则读取最新版本。"}
+                    : "未指定版本时，优先读取最新未上架版本，其次读取最新已上架版本。"}
               </Text>
             </div>
             <Button

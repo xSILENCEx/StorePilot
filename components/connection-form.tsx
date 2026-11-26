@@ -203,6 +203,44 @@ export function ConfigForm({
     setFields((current) => ({ ...current, [key]: value }));
     setDirty(true);
   }
+  function renderField(f: (typeof def.fields)[number]) {
+    return f.options ? (
+      <NativeSelect
+        key={f.key}
+        label={f.label}
+        description={f.hint}
+        inputWrapperOrder={["label", "input", "description", "error"]}
+        data={f.options}
+        value={fields[f.key] ?? ""}
+        disabled={!ready || busy}
+        onChange={(e) => change(f.key, e.currentTarget.value)}
+      />
+    ) : f.type === "number" ? (
+      <NumberInput
+        key={f.key}
+        label={f.label}
+        description={f.hint}
+        inputWrapperOrder={["label", "input", "description", "error"]}
+        min={10}
+        max={600}
+        allowDecimal={false}
+        value={fields[f.key] ?? ""}
+        disabled={!ready || busy}
+        onChange={(value) => change(f.key, value)}
+      />
+    ) : (
+      <TextInput
+        key={f.key}
+        label={f.label}
+        description={f.hint}
+        inputWrapperOrder={["label", "input", "description", "error"]}
+        required={f.key !== "version"}
+        value={fields[f.key] ?? ""}
+        disabled={!ready || busy}
+        onChange={(e) => change(f.key, e.currentTarget.value)}
+      />
+    );
+  }
   return (
     <form onSubmit={save} autoComplete="off">
       <Stack gap="lg">
@@ -221,43 +259,28 @@ export function ConfigForm({
           <Loader size="sm" />
         ) : (
           <>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              {def.fields.map((f) =>
-                f.options ? (
-                  <NativeSelect
-                    key={f.key}
-                    label={f.label}
-                    description={f.hint}
-                    data={f.options}
-                    value={fields[f.key] ?? ""}
-                    disabled={!ready || busy}
-                    onChange={(e) => change(f.key, e.currentTarget.value)}
-                  />
-                ) : f.type === "number" ? (
-                  <NumberInput
-                    key={f.key}
-                    label={f.label}
-                    description={f.hint}
-                    min={10}
-                    max={600}
-                    allowDecimal={false}
-                    value={fields[f.key] ?? ""}
-                    disabled={!ready || busy}
-                    onChange={(value) => change(f.key, value)}
-                  />
-                ) : (
-                  <TextInput
-                    key={f.key}
-                    label={f.label}
-                    description={f.hint}
-                    required={f.key !== "version"}
-                    value={fields[f.key] ?? ""}
-                    disabled={!ready || busy}
-                    onChange={(e) => change(f.key, e.currentTarget.value)}
-                  />
-                ),
-              )}
-            </SimpleGrid>
+            {scope === "apple" ? (
+              [
+                { title: "应用信息", keys: ["appId", "bundleId"] },
+                { title: "同步版本", keys: ["appPlatform", "version"] },
+                { title: "API 凭据", keys: ["issuerId", "keyId"] },
+              ].map((section) => (
+                <Stack gap="xs" key={section.title}>
+                  <Text component="h3" size="sm" fw={700} m={0}>
+                    {section.title}
+                  </Text>
+                  <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                    {def.fields
+                      .filter((f) => section.keys.includes(f.key))
+                      .map(renderField)}
+                  </SimpleGrid>
+                </Stack>
+              ))
+            ) : (
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                {def.fields.map(renderField)}
+              </SimpleGrid>
+            )}
             {def.file ? (
               <Stack gap="xs">
                 <Group justify="space-between">
@@ -299,7 +322,7 @@ export function ConfigForm({
                       ? "已保存，留空保留原凭据"
                       : "可上传文件或粘贴凭据"
                   }
-                  rows={4}
+                  rows={scope === "apple" && savedSecret ? 2 : 4}
                   value={secret}
                   spellCheck={false}
                   disabled={!ready || busy}
