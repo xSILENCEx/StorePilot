@@ -98,9 +98,9 @@ test("兼容分段、字段包装及关键词数组，缺失字段和截断仍�
 
 import { modelCanvas } from "../lib/image-canvas";
 test("截图翻译申请对齐模型的原生画布后只需缩小", () => {
-  assert.equal(modelCanvas("gpt-image-2", 1290, 2796), "1296x2800");
-  assert.equal(modelCanvas("gpt-image-2.5-flare", 1290, 2796), "1296x2800");
-  assert.equal(modelCanvas("gpt-image-2", 512, 512), "1024x1024");
+  assert.equal(modelCanvas("gpt-image-2", 1290, 2796), "1776x3840");
+  assert.equal(modelCanvas("gpt-image-2.5-flare", 1290, 2796), "1776x3840");
+  assert.equal(modelCanvas("gpt-image-2", 512, 512), "2880x2880");
   assert.equal(modelCanvas("custom", 1290, 2796), "1290x2796");
 });
 

@@ -1,6 +1,7 @@
 import { requestSizedImage } from "./sized-image-request";
 import { pauseImage, pendingImage } from "./image-review";
-import { dimensions, fitsTarget, resolutionLabel } from "./image-resolution";
+import { fitModelImage } from "./fit-model-image";
+import { dimensions, resolutionLabel } from "./image-resolution";
 import { enlargeTranslation } from "./translation-upscale";
 import { maxImagePixels } from "./asset-reference";
 import { assetIdFromUrl, maxAssetBytes } from "./asset-reference";
@@ -124,15 +125,11 @@ export async function generateImageTask(job: Job) {
       returned: width + "x" + height,
     };
     logJob(job.id, "resolution", resolutionLabel(resolution));
-    const fits = fitsTarget(width, height, resolution.target);
     const target = dimensions(resolution.target);
-    if (fits && target && (width !== target.width || height !== target.height))
-      image.resize(target.width, target.height, {
-        fit: "cover",
-        withoutEnlargement: true,
-      });
-    const output = await image
-      .rotate()
+    const normalized = target
+      ? sharp(await fitModelImage(source, target.width, target.height))
+      : image.autoOrient();
+    const output = await normalized
       .flatten({ background: "#ffffff" })
       .toColourspace("srgb")
       .png()
@@ -140,12 +137,8 @@ export async function generateImageTask(job: Job) {
     if (output.length > maxAssetBytes)
       throw new ImageGenerationError("生成图片超过 20 MB，请调整模型生成尺寸");
     const asset = await storeAsset(output);
-    if (fits && job.input.previewFirst && screenshotIndex === 0) {
+    if (job.input.previewFirst && screenshotIndex === 0) {
       pauseImage(job, resolution, asset.url, "首张样图", undefined, true);
-      return;
-    }
-    if (!fits) {
-      pauseImage(job, resolution, asset.url, "生成图片");
       return;
     }
     finishJob(job.id, "succeeded", {

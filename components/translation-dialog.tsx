@@ -344,7 +344,7 @@ export function TranslationDialog({
                 )}
                 {imageCount > 0 && (
                   <Text size="sm">
-                    批量翻译先生成一张样图。在任务记录中确认后继续。尺寸不足时可查看原图，选择超分、重新生成或停止批次。
+                    批量翻译先生成一张样图。在任务记录中确认后继续。返回图片会居中裁剪到目标比例，尺寸不足时按原像素放大。
                   </Text>
                 )}
                 <Text size="sm" c="dimmed">

@@ -7,7 +7,8 @@ import { enlargeTranslation } from "./translation-upscale";
 import type { AssetTarget } from "./asset-target";
 import { requestSizedImage } from "./sized-image-request";
 import { pauseImage, pendingImage } from "./image-review";
-import { fitsTarget, resolutionLabel } from "./image-resolution";
+import { fitModelImage } from "./fit-model-image";
+import { resolutionLabel } from "./image-resolution";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
@@ -159,7 +160,8 @@ async function translateImage(
           `Translate all visible ${source} text into natural ${target} text. Preserve artwork, composition, layout, branding and colors. Preserve images without text. Output ${canvas}.`,
       ),
     );
-    const image = sharp(await replyBuffer(reply), {
+    const sourceBytes = await replyBuffer(reply);
+    const image = sharp(sourceBytes, {
       limitInputPixels: maxImagePixels,
     });
     const size = (await image.metadata()).autoOrient;
@@ -172,11 +174,6 @@ async function translateImage(
       "resolution",
       item.label + " · " + resolutionLabel(resolution),
     );
-    if (!fitsTarget(size.width, size.height, targetSize)) {
-      const raw = await storeAsset(await image.autoOrient().png().toBuffer());
-      pauseImage(job, resolution, raw.url, item.id, values);
-      return;
-    }
     if (
       job.input.previewFirst &&
       item.id ===
@@ -185,11 +182,7 @@ async function translateImage(
         )?.id
     )
       sampleResolution = resolution;
-    bytes = await image
-      .autoOrient()
-      .resize(width, height, { fit: "cover", withoutEnlargement: true })
-      .png()
-      .toBuffer();
+    bytes = await fitModelImage(sourceBytes, width, height);
   }
   const targetSpec: AssetTarget | undefined =
     item.kind === "graphic"
