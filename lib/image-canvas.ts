@@ -28,7 +28,8 @@ export function modelCanvas(model: string, width: number, height: number) {
       candidates.push({ w, h });
     }
   }
-  const canvas = candidates.at(-1);
+  const canvas =
+    candidates.find(({ w, h }) => w >= width && h >= height) ?? candidates.at(-1);
   if (!canvas) throw new Error("没有符合原图比例的模型画布");
   return canvas.w + "x" + canvas.h;
 }
