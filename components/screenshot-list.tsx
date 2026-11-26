@@ -186,7 +186,6 @@ export function ScreenshotList(props: EditorProps) {
             key={group.value}
             {...props}
             group={group}
-            groups={groups}
             screenSize={currentSize?.size.replace(" × ", "x")}
             sizeControl={
               sizes.length > 0 ? (
@@ -341,12 +340,7 @@ export function ScreenshotList(props: EditorProps) {
               <Text fw={600} mt="md">
                 {device.label}
               </Text>
-              <ScreenshotGroup
-                {...props}
-                group={device}
-                groups={groups}
-                historical
-              />
+              <ScreenshotGroup {...props} group={device} historical />
             </div>
           ))}
         </details>

@@ -69,7 +69,7 @@ npm run services:stop
 
 同一时间最多保留四批排队/执行中的图片任务，由 Worker 顺序处理。关闭页面不影响执行，重新进入可查看结果。请求 ID 防止相同提交重复入队。模型请求发出前记录状态，响应先保存到本机；Worker 中断后可恢复已有响应，无可靠响应时标记「调用结果未知」，不自动重发付费请求。失败后需要新图时再次点击生成，会创建新的调用。
 
-删除生成记录不会删除已加入草稿的图片文件。商店截图按平台、语言和设备分组独立保存和排序。旧草稿截图显示在「待分组」，从预览中可移入设备组。Apple 同步时读取设备目录，离线使用[公开截图规格](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)；Google 分组依据 [Play Console 截图要求](https://support.google.com/googleplay/android-developer/answer/9866151)。截图列表支持排序和移除；上传素材支持静态 PNG/JPEG，最多 20 MB / 4000 万像素。当前不做素材物理回收。
+删除生成记录不会删除已加入草稿的图片文件。商店截图按平台、语言和设备分组独立保存和排序。旧草稿截图显示在「待分组」。Apple 同步时读取设备目录，离线使用[公开截图规格](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)；Google 分组依据 [Play Console 截图要求](https://support.google.com/googleplay/android-developer/answer/9866151)。截图列表支持排序和移除；上传素材支持静态 PNG/JPEG，最多 20 MB / 4000 万像素。当前不做素材物理回收。
 
 商店截图和 Google Play 图片资源按实际像素及 EXIF 方向校验。符合要求的尺寸直接保留。需要转换时，仅当原图两边均足够大、居中裁剪最多损失该方向的 0.5% 时，才等比缩小或裁去少量边缘。无法适配时会提示原始尺寸和目标要求。Google Play 图标为 512 × 512 px，宣传图为 1024 × 500 px。AI 参考素材可保留原尺寸。
 

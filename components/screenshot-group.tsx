@@ -2,7 +2,6 @@
 import { uploadImages, appendImages } from "../lib/store-image-client";
 import { hoverActionEvents } from "./hover-actions";
 import { BatchDownload } from "./batch-download";
-import { storeImage } from "../lib/store-image-client";
 import { useRef, useState } from "react";
 import {
   ActionIcon,
@@ -10,7 +9,6 @@ import {
   Button,
   FileButton,
   Group,
-  Select,
   Stack,
   Text,
   Title,
@@ -47,16 +45,13 @@ export function ScreenshotGroup({
   sizeControl,
   screenSize,
   group,
-  groups,
 }: EditorProps & {
   historical?: boolean;
   sizeControl?: React.ReactNode;
   screenSize?: string;
   group: DeviceGroup;
-  groups: DeviceGroup[];
 }) {
   const images = groupImages(draft, group.value);
-  const [destination, setDestination] = useState<string | null>(null);
   function updateImages(fn: (current: string[]) => string[]) {
     updateDraft((current) => {
       const result = fn(groupImages(current, group.value));
@@ -69,45 +64,6 @@ export function ScreenshotGroup({
       }
       return setGroupImages(current, group.value, result);
     });
-  }
-  async function moveToGroup(src: string, target: string) {
-    setBusy(true);
-    try {
-      const converted = await storeImage(src, {
-        kind: "screenshot",
-        platform,
-        appId,
-        group: target,
-      });
-
-      updateDraft((current) => {
-        const existing = groupImages(current, target);
-        const next = appendImages(existing, [converted]);
-        if (
-          next.length > (groups.find((g) => g.value === target)?.limit ?? 0)
-        ) {
-          notifications.show({ color: "orange", message: "目标设备组已满" });
-          return {};
-        }
-        const removed = setGroupImages(
-          current,
-          group.value,
-          groupImages(current, group.value).filter((url) => url !== src),
-        );
-        return {
-          ...removed,
-          ...setGroupImages({ ...current, ...removed }, target, next),
-        };
-      });
-      setPreview(null);
-    } catch (error) {
-      notifications.show({
-        color: "red",
-        message: error instanceof Error ? error.message : "移动失败",
-      });
-    } finally {
-      setBusy(false);
-    }
   }
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
@@ -217,7 +173,7 @@ export function ScreenshotGroup({
       </Group>
       {group.value === ungrouped && (
         <Text size="xs" c="dimmed" mb="sm">
-          旧草稿截图保存在这里。点击截图预览，即可移入设备组。
+          这里显示旧草稿中未指定设备组的截图。
         </Text>
       )}
       {!images.length ? (
@@ -362,28 +318,7 @@ export function ScreenshotGroup({
         title="截图预览"
         downloadName="store-screenshot.png"
         onClose={() => setPreview(null)}
-      >
-        {preview && (
-          <Group align="end">
-            <Select
-              label="移入设备组"
-              searchable
-              value={destination}
-              onChange={setDestination}
-              data={groups.filter(
-                (g) => g.value !== group.value && g.value !== ungrouped,
-              )}
-            />
-            <Button
-              variant="default"
-              disabled={!enabled || busy || !destination}
-              onClick={() => destination && moveToGroup(preview, destination)}
-            >
-              移动截图
-            </Button>
-          </Group>
-        )}
-      </ImagePreview>
+      />
     </>
   );
 }
