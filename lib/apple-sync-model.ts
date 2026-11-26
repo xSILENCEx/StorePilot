@@ -1,17 +1,8 @@
+import { screenshotGroup } from "./screenshot-groups";
+import { storeFields } from "./store-fields";
+import { blankDraft } from "./model";
 import type { DeviceGroup } from "./screenshot-groups";
 import type { Draft, Platform, GraphicType } from "./model";
-export const textFields = [
-  "title",
-  "subtitle",
-  "description",
-  "keywords",
-  "promotionalText",
-  "whatsNew",
-  "supportUrl",
-  "marketingUrl",
-  "privacyPolicyUrl",
-  "privacyChoicesUrl",
-] as const;
 export type AppleScreenshot = {
   id: string;
   assetId: string;
@@ -80,20 +71,14 @@ export type GoogleSnapshot = {
   warnings: string[];
   locales: StoreLocales;
 };
-export const googleTextFields = [
-  "title",
-  "subtitle",
-  "description",
-  "video",
-] as const;
 export function textDiff(
   local: Draft | undefined,
   remote: Draft,
   platform: Platform = "apple",
 ) {
-  return (
-    platform === "apple" ? [...textFields] : [...googleTextFields]
-  ).filter((field) => !local || (local[field] ?? "") !== (remote[field] ?? ""));
+  return storeFields[platform].filter(
+    (field) => !local || (local[field] ?? "") !== (remote[field] ?? ""),
+  );
 }
 // Only missing languages are imported. Existing drafts (including intentionally empty ones) are never replaced.
 export function importMissing(
@@ -109,36 +94,50 @@ export function importMissing(
   return next;
 }
 
-export function appleDeviceLabel(type: string) {
-  const known: Record<string, string> = {
-    APP_IPHONE_67: "iPhone 6.7 英寸",
-    APP_IPHONE_65: "iPhone 6.5 英寸",
-    APP_IPHONE_55: "iPhone 5.5 英寸",
-    APP_IPAD_PRO_3GEN_129: "iPad Pro 12.9 英寸",
-    IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE: "iPhone 大屏",
-  };
+export type ImportSection = "metadata" | "screenshots" | "graphics";
+export function snapshotIdentity(snapshot: AppleSnapshot | GoogleSnapshot) {
+  return "packageName" in snapshot
+    ? {
+        identifier: snapshot.packageName,
+        primary: snapshot.details?.defaultLanguage,
+      }
+    : {
+        identifier: snapshot.target.bundleId,
+        primary: snapshot.metadata?.primaryLocale,
+      };
+}
+type ImportSnapshot = {
+  locales: StoreLocales;
+  deviceGroups?: AppleSnapshot["deviceGroups"];
+};
+export function canImportLocale(
+  snapshot: ImportSnapshot,
+  language: string,
+  platform: Platform,
+  section: ImportSection,
+) {
+  const entry = snapshot.locales[language];
+  if (!entry) return false;
+  if (section === "metadata") return true;
+  if (section === "graphics")
+    return (
+      platform === "google" &&
+      Object.values(entry.graphics ?? {}).some((image) => image.url)
+    );
+  const shots = entry.screenshots;
   return (
-    known[type] ??
-    (type.includes("IMESSAGE")
-      ? "iMessage"
-      : type.includes("IPHONE")
-        ? "iPhone"
-        : type.includes("IPAD")
-          ? "iPad"
-          : type.includes("DESKTOP") || type.includes("MAC")
-            ? "Mac"
-            : type.includes("TV")
-              ? "Apple TV"
-              : type.includes("VISION")
-                ? "Apple Vision"
-                : "其他设备")
+    !!shots?.length &&
+    shots.every((image) => image.url) &&
+    Object.entries(Object.groupBy(shots, (image) => image.deviceType)).every(
+      ([device, images]) =>
+        (images?.length ?? 0) <=
+        screenshotGroup(platform, device, snapshot.deviceGroups).limit,
+    )
   );
 }
-
-export type ImportSection = "metadata" | "screenshots" | "graphics";
 export function overwriteStoreDrafts(
   drafts: Record<string, Draft>,
-  snapshot: { locales: StoreLocales },
+  snapshot: ImportSnapshot,
   platform: Platform,
   section: ImportSection,
   languages: string[],
@@ -146,35 +145,23 @@ export function overwriteStoreDrafts(
   const next = { ...drafts };
   for (const language of languages) {
     const entry = snapshot.locales[language];
-    if (!entry) continue;
+    if (!canImportLocale(snapshot, language, platform, section)) continue;
     const key = platform + ":" + language;
     const draft: Draft = {
-      ...(drafts[key] ?? {
-        title: "",
-        subtitle: "",
-        description: "",
-        keywords: "",
-        images: [],
-      }),
+      ...(drafts[key] ?? blankDraft()),
     };
     if (section === "metadata") {
-      for (const field of platform === "apple" ? textFields : googleTextFields)
+      for (const field of storeFields[platform])
         draft[field] = entry.draft[field] ?? "";
     } else if (section === "screenshots") {
       const groups: Record<string, string[]> = {};
-      if (
-        !entry.screenshots?.length ||
-        entry.screenshots.some((image) => !image.url)
-      )
-        continue;
       for (const image of entry.screenshots)
         (groups[image.deviceType] ??= []).push(image.url!);
       draft.screenshotGroups = groups;
       draft.images = [];
     } else {
-      if (!entry.graphics || platform !== "google") continue;
       draft.graphics = Object.fromEntries(
-        Object.entries(entry.graphics).flatMap(([type, image]) =>
+        Object.entries(entry.graphics ?? {}).flatMap(([type, image]) =>
           image.url ? [[type, image.url]] : [],
         ),
       );

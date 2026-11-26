@@ -54,26 +54,64 @@ export function appleGroupLabel(display: string, platform: string, id: string) {
   const label = labels[display] ?? labels[platform] ?? id;
   return platform === "IMESSAGE_APP_STORE" ? "iMessage · " + label : label;
 }
+function legacyAppleLabel(type: string) {
+  const known: Record<string, string> = {
+    APP_IPHONE_67: "iPhone 6.7 英寸",
+    APP_IPHONE_65: "iPhone 6.5 英寸",
+    APP_IPHONE_55: "iPhone 5.5 英寸",
+    APP_IPAD_PRO_3GEN_129: "iPad Pro 12.9 英寸",
+    IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE: "iPhone 大屏",
+  };
+  return (
+    known[type] ??
+    (type.includes("IMESSAGE")
+      ? "iMessage"
+      : type.includes("IPHONE")
+        ? "iPhone"
+        : type.includes("IPAD")
+          ? "iPad"
+          : type.includes("DESKTOP") || type.includes("MAC")
+            ? "Mac"
+            : type.includes("TV")
+              ? "Apple TV"
+              : type.includes("VISION")
+                ? "Apple Vision"
+                : type)
+  );
+}
+
+export function screenshotGroup(
+  platform: Platform,
+  value: string,
+  catalog?: DeviceGroup[],
+): DeviceGroup {
+  if (platform === "apple") {
+    const current = catalog?.find((group) => group.value === value);
+    if (current) return current;
+  }
+  const offline: Record<string, string> =
+    platform === "apple" ? appleDevices : googleScreenshotDevices;
+  const label =
+    offline[value] ??
+    (platform === "apple"
+      ? legacyAppleLabel(value)
+      : historicalGoogleDevices[value]) ??
+    value;
+  return { value, label, limit: platform === "apple" ? 10 : 8 };
+}
 export function deviceGroups(
   platform: Platform,
   existing: string[],
   catalog?: DeviceGroup[],
 ) {
   const offline = platform === "apple" ? appleDevices : googleScreenshotDevices;
-  const limit = platform === "apple" ? 10 : 8;
   const groups =
     platform === "apple" && catalog?.length
       ? [...catalog]
-      : Object.entries(offline).map(([value, label]) => ({
-          value,
-          label,
-          limit,
-        }));
+      : Object.keys(offline).map((value) => screenshotGroup(platform, value));
   for (const value of existing) {
     if (!groups.some((g) => g.value === value)) {
-      const labels: Record<string, string> =
-        platform === "google" ? historicalGoogleDevices : offline;
-      groups.push({ value, label: labels[value] ?? value, limit });
+      groups.push(screenshotGroup(platform, value, catalog));
     }
   }
   return groups;

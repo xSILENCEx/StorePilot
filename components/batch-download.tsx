@@ -1,11 +1,15 @@
 "use client";
+import { downloadBlob } from "../lib/download-blob";
 import { useState } from "react";
 import { Button } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Download } from "lucide-react";
 import type { Platform } from "../lib/model";
 
-export function BatchDownload({ size = "xs", ...props }: {
+export function BatchDownload({
+  size = "xs",
+  ...props
+}: {
   size?: "xs" | "sm";
   appId: string;
   platform: Platform;
@@ -27,14 +31,10 @@ export function BatchDownload({ size = "xs", ...props }: {
       const name = response.headers
         .get("content-disposition")
         ?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = name ? decodeURIComponent(name) : "图片.zip";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      downloadBlob(
+        await response.blob(),
+        name ? decodeURIComponent(name) : "图片.zip",
+      );
     } catch (e) {
       notifications.show({
         color: "red",

@@ -1,3 +1,8 @@
+import {
+  assetIdFromUrl,
+  assetUrl,
+  maxAssetBytes,
+} from "../../../lib/asset-reference";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 import { eq } from "drizzle-orm";
 import { db } from "../../../lib/db";
@@ -23,16 +28,16 @@ export async function POST(request: Request) {
     const existing = form.get("asset");
     let bytes: Buffer;
     if (file instanceof File && !existing) {
-      if (!file.size || file.size > 20 * 1024 * 1024)
+      if (!file.size || file.size > maxAssetBytes)
         throw new HttpError(400, "请选择不超过 20 MB 的 PNG/JPEG");
       bytes = Buffer.from(await file.arrayBuffer());
     } else if (
       !file &&
       target &&
       typeof existing === "string" &&
-      /^\/api\/assets\/[a-f0-9]{64}$/.test(existing)
+      assetUrl.safeParse(existing).success
     ) {
-      bytes = await readFile(assetPath(existing.slice(12))).catch(() => {
+      bytes = await readFile(assetPath(assetIdFromUrl(existing))).catch(() => {
         throw new HttpError(404, "素材文件不存在");
       });
     } else throw new HttpError(400, "请选择图片");

@@ -1,9 +1,11 @@
+import { configId } from "./config-store";
+import { findWorkspaceApp } from "./workspace-store";
+import { activeJobStatuses } from "./job-status";
 import { z } from "zod";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   jobs,
-  workspaces,
   connectionConfigs,
   storeSnapshots,
   googleSnapshots,
@@ -29,7 +31,7 @@ export async function getStoreSync(
     const config = db()
       .select()
       .from(connectionConfigs)
-      .where(eq(connectionConfigs.id, `${platform}:${appId}`))
+      .where(eq(connectionConfigs.id, configId(platform, appId)))
       .get();
     const job = db()
       .select({ id: jobs.id, status: jobs.status, result: jobs.result })
@@ -72,17 +74,12 @@ export function enqueueStoreSync(
 ) {
   return db().transaction(
     (tx) => {
-      const app = tx
-        .select()
-        .from(workspaces)
-        .where(eq(workspaces.id, "default"))
-        .get()
-        ?.apps.find((a) => a.id === input.appId);
+      const app = findWorkspaceApp(input.appId, tx);
       if (!app?.[platform]) throw new HttpError(404, "当前平台应用不存在");
       const config = tx
         .select()
         .from(connectionConfigs)
-        .where(eq(connectionConfigs.id, `${platform}:${input.appId}`))
+        .where(eq(connectionConfigs.id, configId(platform, input.appId)))
         .get();
       if (!config?.secret)
         throw new HttpError(
@@ -105,7 +102,7 @@ export function enqueueStoreSync(
             and(
               eq(jobs.app_id, input.appId),
               eq(jobs.kind, `pull_${platform}`),
-              inArray(jobs.status, ["queued", "running"]),
+              inArray(jobs.status, activeJobStatuses),
             ),
           )
           .get()

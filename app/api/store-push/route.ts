@@ -1,7 +1,10 @@
+import { configId } from "../../../lib/config-store";
+import { readWorkspace } from "../../../lib/workspace-store";
+import { activeJobStatuses } from "../../../lib/job-status";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../../lib/db";
-import { jobs, workspaces, connectionConfigs } from "../../../lib/schema";
+import { jobs, connectionConfigs } from "../../../lib/schema";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 import { platformSchema } from "../../../lib/model";
 import { pushContent, pushSections } from "../../../lib/push-plan";
@@ -41,11 +44,7 @@ export async function POST(request: Request) {
             return;
           throw new HttpError(409, "请求编号冲突");
         }
-        const row = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get();
+        const row = readWorkspace(tx);
         const app = row?.apps.find((a) => a.id === appId);
         if (!app?.[platform]) throw new HttpError(404, "应用或平台不存在");
         if (revision !== row?.revision)
@@ -53,7 +52,7 @@ export async function POST(request: Request) {
         const config = tx
           .select()
           .from(connectionConfigs)
-          .where(eq(connectionConfigs.id, platform + ":" + appId))
+          .where(eq(connectionConfigs.id, configId(platform, appId)))
           .get();
         if (!config?.secret) throw new HttpError(400, "请先配置商店连接");
         const fields = configFields[platform].parse(config.fields);
@@ -71,7 +70,7 @@ export async function POST(request: Request) {
                 eq(jobs.app_id, appId),
                 eq(jobs.platform, platform),
                 eq(jobs.kind, "push_store"),
-                inArray(jobs.status, ["queued", "running"]),
+                inArray(jobs.status, activeJobStatuses),
               ),
             )
             .get()

@@ -1,3 +1,5 @@
+import { maxImagePixels } from "./asset-reference";
+import { assetIdFromUrl, maxAssetBytes } from "./asset-reference";
 import { withModelFallback } from "./model-fallback";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
@@ -37,7 +39,7 @@ export async function generateImageTask(job: Job) {
       for (const url of screenshot
         ? [screenshot, ...settings.references]
         : settings.references) {
-        const id = url.split("/").at(-1)!;
+        const id = assetIdFromUrl(url);
         const asset = db().select().from(assets).where(eq(assets.id, id)).get();
         if (!asset) throw new ImageGenerationError("参考图片不存在");
         references.push({
@@ -67,7 +69,7 @@ export async function generateImageTask(job: Job) {
     received = true;
     logJob(job.id, "save", "保存模型图片，保留模型输出尺寸");
     const source = await replyBuffer(reply);
-    const image = sharp(source, { limitInputPixels: 40000000 });
+    const image = sharp(source, { limitInputPixels: maxImagePixels });
     const meta = await image.metadata();
     if (
       !["png", "jpeg", "webp"].includes(meta.format ?? "") ||
@@ -80,7 +82,7 @@ export async function generateImageTask(job: Job) {
       .toColourspace("srgb")
       .png()
       .toBuffer();
-    if (output.length > 20 * 1024 * 1024)
+    if (output.length > maxAssetBytes)
       throw new ImageGenerationError("生成图片超过 20 MB，请调整模型生成尺寸");
     const asset = await storeAsset(output);
     finishJob(job.id, "succeeded", {

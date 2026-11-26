@@ -1,4 +1,6 @@
 "use client";
+import { isJobActive } from "../lib/job-status";
+import { ImagePreview } from "./image-preview";
 import { BatchDownload } from "./batch-download";
 import {
   ActionIcon,
@@ -6,7 +8,6 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   Paper,
   SimpleGrid,
   Stack,
@@ -15,14 +16,7 @@ import {
   ThemeIcon,
   Title,
 } from "@mantine/core";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Download,
-  ImagePlus,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { ArrowRight, ImagePlus, Sparkles, Trash2 } from "lucide-react";
 import type { ImageRecord } from "../lib/image-model";
 import type { Platform } from "../lib/model";
 const statuses: Record<string, string> = {
@@ -131,7 +125,7 @@ export function GeneratedImageResults({
                       bg="gray.0"
                       style={{ borderRadius: 8 }}
                     >
-                      {["queued", "running"].includes(image.status) ? (
+                      {isJobActive(image.status) ? (
                         <Loader size="sm" />
                       ) : (
                         <ImagePlus
@@ -157,7 +151,7 @@ export function GeneratedImageResults({
                     >
                       {statuses[image.status]}
                     </Badge>
-                    {!["queued", "running"].includes(image.status) && (
+                    {!isJobActive(image.status) && (
                       <ActionIcon
                         variant="subtle"
                         color="gray"
@@ -223,53 +217,32 @@ export function GeneratedImagePreview({
   add: (image: ImageRecord) => void;
 }) {
   return (
-    <Modal
-      opened={opened && !!preview}
-      onClose={() => setPreview(null)}
+    <ImagePreview
+      src={opened ? preview?.result?.url : null}
+      alt={preview?.input.settings.prompt ?? ""}
       title="预览生成图片"
-      size="850px"
+      onClose={() => setPreview(null)}
+      backLabel="返回结果"
+      downloadName={preview ? `screenshot-${preview.id}.png` : undefined}
+      caption={
+        preview && (
+          <>
+            <Text size="xs" c="dimmed">
+              {preview.result?.width} × {preview.result?.height}
+            </Text>
+            <Text size="sm">{preview.input.settings.prompt}</Text>
+          </>
+        )
+      }
     >
       {preview?.result?.url && (
-        <Stack>
-          <img
-            className="image-preview"
-            src={preview.result.url}
-            alt={preview.input.settings.prompt}
-          />
-          <Text size="xs" c="dimmed">
-            {preview.result.width} × {preview.result.height}
-          </Text>
-          <Text size="sm">{preview.input.settings.prompt}</Text>
-          <Group justify="space-between" className="modal-footer">
-            <Button
-              variant="subtle"
-              leftSection={<ArrowLeft size={14} />}
-              onClick={() => setPreview(null)}
-            >
-              返回结果
-            </Button>
-            <Group>
-              <Button
-                component="a"
-                variant="default"
-                href={preview.result.url}
-                download={`screenshot-${preview.id}.png`}
-                leftSection={<Download size={15} />}
-              >
-                下载
-              </Button>
-              <Button
-                disabled={disabled || alreadyAdded(preview.result.url)}
-                onClick={() => add(preview)}
-              >
-                {alreadyAdded(preview.result.url)
-                  ? "已加入截图"
-                  : "加入商店截图"}
-              </Button>
-            </Group>
-          </Group>
-        </Stack>
+        <Button
+          disabled={disabled || alreadyAdded(preview.result.url)}
+          onClick={() => add(preview)}
+        >
+          {alreadyAdded(preview.result.url) ? "已加入截图" : "加入商店截图"}
+        </Button>
       )}
-    </Modal>
+    </ImagePreview>
   );
 }

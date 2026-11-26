@@ -1,3 +1,4 @@
+import { isJobActive } from "../../../../../lib/job-status";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { configTarget as target } from "../../../../../lib/config-target";
@@ -38,8 +39,7 @@ export async function POST(
             .from(jobs)
             .where(eq(jobs.id, config.verification.jobId))
             .get();
-          if (existing && ["queued", "running"].includes(existing.status))
-            return existing.id;
+          if (existing && isJobActive(existing.status)) return existing.id;
         }
         const id = enqueue(
           {

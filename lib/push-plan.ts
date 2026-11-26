@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { textFields, googleTextFields } from "./apple-sync-model";
+import { storeFields } from "./store-fields";
 import {
   graphicTypes,
   validateDraft,
@@ -17,7 +17,7 @@ export function pushContent(
 ) {
   const fields: Record<string, string> = {};
   if (sections.includes("text"))
-    for (const key of platform === "apple" ? textFields : googleTextFields) {
+    for (const key of storeFields[platform]) {
       const value = draft[key];
       if (value?.trim()) fields[key] = value;
     }

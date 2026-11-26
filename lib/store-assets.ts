@@ -1,11 +1,12 @@
+import { assetIdFromUrl, maxAssetBytes } from "./asset-reference";
 import { access } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { assets } from "./schema";
 import { assetPath, storeAsset } from "./storage";
 import { downloadImage } from "./image-provider";
-export class StoreSyncError extends Error {}
 import type { StoreLocales, AppleScreenshot } from "./apple-sync-model";
+export class StoreSyncError extends Error {}
 type ImageSnapshot = { locales: StoreLocales; icon?: AppleScreenshot };
 function snapshotImages(snapshot: ImageSnapshot) {
   const images = Object.values(snapshot.locales).flatMap((entry) => [
@@ -30,7 +31,7 @@ export async function saveStoreImages(
     try {
       const cachedUrl = cached.get(image.sourceUrl);
       if (cachedUrl) {
-        const id = cachedUrl.split("/").at(-1)!;
+        const id = assetIdFromUrl(cachedUrl);
         const asset = db().select().from(assets).where(eq(assets.id, id)).get();
         if (
           asset &&
@@ -46,7 +47,7 @@ export async function saveStoreImages(
         }
       }
       const bytes = await download(image.sourceUrl);
-      if (bytes.length > 20 * 1024 * 1024) throw new Error("Image too large");
+      if (bytes.length > maxAssetBytes) throw new Error("Image too large");
       const asset = await storeAsset(bytes);
       image.url = asset.url;
       image.width = asset.width;

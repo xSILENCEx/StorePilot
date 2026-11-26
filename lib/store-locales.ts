@@ -1,4 +1,5 @@
-import type { Platform } from "./model";
+import { z } from "zod";
+import type { StoreApp, Platform } from "./model";
 // App Store Connect locale shortcodes and Play Console manual translation locales.
 // https://developer.apple.com/documentation/appstoreconnectapi/managing-metadata-in-your-app-by-using-locale-shortcodes
 // https://support.google.com/googleplay/android-developer/answer/9844778
@@ -160,4 +161,12 @@ export function availableStoreLocales(platform: Platform, existing: string[]) {
   return codes[platform]
     .filter((code) => !used.has(canonical(code)))
     .map((code) => ({ code, name: names.of(code) ?? code }));
+}
+
+export const localeCode = z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/);
+export function draftLocales(app: StoreApp, platform: Platform) {
+  const prefix = platform + ":";
+  return Object.keys(app.drafts)
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length));
 }

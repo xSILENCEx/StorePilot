@@ -1,8 +1,11 @@
+import { readWorkspace } from "../../../lib/workspace-store";
+import { draftLocales } from "../../../lib/store-locales";
+import { activeJobStatuses } from "../../../lib/job-status";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 import { db } from "../../../lib/db";
-import { jobs, workspaces } from "../../../lib/schema";
+import { jobs } from "../../../lib/schema";
 import { enqueue } from "../../../lib/job-store";
 import { readConfig } from "../../../lib/config-store";
 import { platformSchema } from "../../../lib/model";
@@ -38,20 +41,14 @@ export async function POST(request: Request) {
     };
     const ids = db().transaction(
       (tx) => {
-        const row = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get();
+        const row = readWorkspace(tx);
         const app = row?.apps.find((a) => a.id === appId);
         const draft = app?.drafts[platform + ":" + source];
         if (!app?.[platform] || !draft)
           throw new HttpError(404, "来源草稿不存在");
         if (row?.revision !== revision)
           throw new HttpError(409, "草稿已更新，请重新检查翻译选项");
-        const existing = Object.keys(app.drafts)
-          .filter((k) => k.startsWith(platform + ":"))
-          .map((k) => k.split(":")[1]);
+        const existing = draftLocales(app, platform);
         const allowed =
           mode === "add"
             ? availableStoreLocales(platform, existing).map((l) => l.code)
@@ -88,7 +85,7 @@ export async function POST(request: Request) {
               eq(jobs.app_id, appId),
               eq(jobs.platform, platform),
               eq(jobs.kind, "translate"),
-              inArray(jobs.status, ["queued", "running"]),
+              inArray(jobs.status, activeJobStatuses),
             ),
           )
           .all();

@@ -1,4 +1,7 @@
 "use client";
+import { readApiResponse } from "../lib/api-response";
+import { isJobActive } from "../lib/job-status";
+import { poll } from "../lib/poll";
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
@@ -39,35 +42,26 @@ export function ConnectionCard({
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
   const [version, setVersion] = useState(0);
-  const endpoint = settingsUrl(scope, app);
-  const refreshing = ["queued", "running"].includes(
-    state?.verification?.status ?? "",
-  );
+  const endpoint = settingsUrl(scope, app?.id);
+  const refreshing = isJobActive(state?.verification?.status);
   useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
+    const load = async (signal: AbortSignal) => {
       try {
         const r = await fetch(endpoint, {
           cache: "no-store",
-          signal: controller.signal,
+          signal,
         });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error);
-        if (!controller.signal.aborted) {
+        const data = await readApiResponse(r);
+        if (!signal.aborted) {
           setState(data);
           setError("");
         }
       } catch (e) {
-        if (!controller.signal.aborted)
+        if (!signal.aborted)
           setError(e instanceof Error ? e.message : "读取失败");
       }
     };
-    void load();
-    const timer = refreshing ? setInterval(() => void load(), 2000) : undefined;
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
+    return poll(load, refreshing ? 2000 : null);
   }, [endpoint, version, refreshing]);
   const reload = useCallback(() => setVersion((current) => current + 1), []);
   const def = definitions[scope];
@@ -112,7 +106,7 @@ export function ConnectionCard({
                         ? "验证失败"
                         : status === "uncertain"
                           ? "结果未知"
-                          : status === "queued" || status === "running"
+                          : isJobActive(status)
                             ? "验证中"
                             : "已配置"}
             </Badge>

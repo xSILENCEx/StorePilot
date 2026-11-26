@@ -1,4 +1,7 @@
 "use client";
+import { readApiResponse } from "../lib/api-response";
+import { isJobActive } from "../lib/job-status";
+import { poll } from "../lib/poll";
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -37,7 +40,7 @@ export function ConfigForm({
   onSaved: () => void;
 }) {
   const def = definitions[scope];
-  const endpoint = settingsUrl(scope, app);
+  const endpoint = settingsUrl(scope, app?.id);
   const defaults = {
     ...def.defaults,
     ...(scope === "apple"
@@ -59,8 +62,7 @@ export function ConfigForm({
   const [verification, setVerification] = useState<Verification | null>(null);
   const [confirmGoogle, setConfirmGoogle] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const verifying =
-    verification?.status === "queued" || verification?.status === "running";
+  const verifying = isJobActive(verification?.status);
   useEffect(() => {
     onDirty(dirty);
   }, [dirty, onDirty]);
@@ -69,8 +71,7 @@ export function ConfigForm({
     setMessage("");
     try {
       const r = await fetch(endpoint, { cache: "no-store" });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       setFields({ ...defaults, ...data.fields });
       setRevision(data.revision);
       setSavedSecret(data.secretSaved);
@@ -95,30 +96,27 @@ export function ConfigForm({
   }, [dirty]);
   useEffect(() => {
     if (!verifying) return;
-    let active = true;
-    const timer = setInterval(() => {
-      void fetch(endpoint, { cache: "no-store" })
-        .then(async (r) => {
-          const data = await r.json();
-          if (!r.ok) throw new Error(data.error);
-          if (!active) return;
+    return poll(
+      async (signal) => {
+        try {
+          const r = await fetch(endpoint, { cache: "no-store", signal });
+          const data = await readApiResponse(r);
+          if (signal.aborted) return;
           if (data.revision !== revision) {
             setVerification(null);
             setMessage("配置已被其他窗口修改，请关闭并重新打开配置。");
             return;
           }
           setVerification(data.verification);
-          if (!["queued", "running"].includes(data.verification?.status ?? ""))
-            onSaved();
-        })
-        .catch(() => {
-          if (active) setMessage("暂时无法读取验证状态，稍后自动重试。");
-        });
-    }, 2000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+          if (!isJobActive(data.verification?.status)) onSaved();
+        } catch {
+          if (!signal.aborted)
+            setMessage("暂时无法读取验证状态，稍后自动重试。");
+        }
+      },
+      2000,
+      false,
+    );
   }, [endpoint, verifying, revision, onSaved]);
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -134,8 +132,7 @@ export function ConfigForm({
           ...(secret ? { secret } : {}),
         }),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       setRevision(data.revision);
       setSavedSecret(data.secretSaved);
       setSecret("");
@@ -163,14 +160,13 @@ export function ConfigForm({
     setMessage("");
     setConfirmGoogle(false);
     try {
-      const url = settingsUrl(scope, app, true);
+      const url = settingsUrl(scope, app?.id, true);
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ revision: savedRevision, verifyApplication }),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       setVerification({
         status: "queued",
         message: "验证任务已入队",
@@ -193,8 +189,7 @@ export function ConfigForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ revision }),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       await load();
       onSaved();
       notifications.show({ message: "配置已清除" });

@@ -102,6 +102,10 @@ export const definitions: Record<
     defaults: { baseUrl: "", model: "", timeoutSeconds: 300 },
   },
 };
-export function settingsUrl(scope: ConfigScope, app?: App, verify = false) {
-  return `/api/settings/${scope}${verify ? "/verify" : ""}${app ? `?appId=${encodeURIComponent(app.id)}` : ""}`;
+export function settingsUrl(
+  scope: ConfigScope,
+  appId?: string,
+  verify = false,
+) {
+  return `/api/settings/${scope}${verify ? "/verify" : ""}${appId ? `?appId=${encodeURIComponent(appId)}` : ""}`;
 }

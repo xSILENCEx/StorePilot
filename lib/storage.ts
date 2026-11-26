@@ -1,3 +1,5 @@
+import { maxImagePixels } from "./asset-reference";
+import { assetIdPattern, assetUrlFromId } from "./asset-reference";
 import { mkdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -5,7 +7,7 @@ import sharp from "sharp";
 import { db } from "./db";
 import { assets } from "./schema";
 export function assetPath(id: string) {
-  if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("Invalid asset id");
+  if (!assetIdPattern.test(id)) throw new Error("Invalid asset id");
   // Runtime assets are private data, not build inputs.
   return path.join(
     /* turbopackIgnore: true */
@@ -14,7 +16,9 @@ export function assetPath(id: string) {
   );
 }
 export async function storeAsset(buffer: Buffer) {
-  const meta = await sharp(buffer, { limitInputPixels: 40000000 }).metadata();
+  const meta = await sharp(buffer, {
+    limitInputPixels: maxImagePixels,
+  }).metadata();
   if (
     !["png", "jpeg"].includes(meta.format ?? "") ||
     !meta.width ||
@@ -39,6 +43,6 @@ export async function storeAsset(buffer: Buffer) {
     bytes: buffer.length,
   };
   await db().insert(assets).values(row).onConflictDoNothing();
-  return { ...row, url: `/api/assets/${id}` };
+  return { ...row, url: assetUrlFromId(id) };
 }
 export { readFile };

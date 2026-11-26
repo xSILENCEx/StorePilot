@@ -1,11 +1,16 @@
+import { assetUrl } from "./asset-reference";
 import { z } from "zod";
 export const platformSchema = z.enum(["apple", "google"]);
 export type Platform = z.infer<typeof platformSchema>;
-const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
+
 export const graphicLabels = {
   icon: "应用图标",
   featureGraphic: "宣传图",
 } as const;
+export const graphicDimensions: Record<GraphicType, [number, number]> = {
+  icon: [512, 512],
+  featureGraphic: [1024, 500],
+};
 export const graphicTypes = ["icon", "featureGraphic"] as const;
 export type GraphicType = (typeof graphicTypes)[number];
 export const draftSchema = z.object({
@@ -119,3 +124,11 @@ export function validateDraft(platform: Platform, draft: Draft) {
     return issue ? [issue] : [];
   });
 }
+
+export const blankDraft = (): Draft => ({
+  title: "",
+  subtitle: "",
+  description: "",
+  keywords: "",
+  images: [],
+});

@@ -1,3 +1,4 @@
+import { assetIdFromUrl } from "./asset-reference";
 import { pushStoreJob } from "./push-task";
 import { translateJob } from "./translation-task";
 import { draftAssetUrls } from "./screenshot-groups";
@@ -38,9 +39,7 @@ export async function executeJob(job: Job) {
             ),
           );
           for (const url of draftAssetUrls(draft)) {
-            const meta = await sharp(
-              assetPath(url.split("/").at(-1)!),
-            ).metadata();
+            const meta = await sharp(assetPath(assetIdFromUrl(url))).metadata();
             if (!meta.width || !meta.height)
               errors.push(`${key}: 图片无法读取`);
           }

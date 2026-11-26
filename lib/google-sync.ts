@@ -1,3 +1,4 @@
+import { localeCode } from "./store-locales";
 import { createGoogleEdit, deleteGoogleEdit } from "./google-edit";
 import { z } from "zod";
 import {
@@ -18,7 +19,7 @@ const appDetails = z.object({
   contactPhone: z.string().optional(),
 });
 const listing = z.object({
-  language: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
+  language: localeCode,
   title: z.string().default(""),
   shortDescription: z.string().default(""),
   fullDescription: z.string().default(""),

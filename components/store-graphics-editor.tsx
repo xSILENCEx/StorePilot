@@ -1,4 +1,6 @@
 "use client";
+import { graphicDimensions } from "../lib/model";
+import { ImagePreview } from "./image-preview";
 import { hoverActionEvents } from "./hover-actions";
 import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
@@ -6,7 +8,6 @@ import { useState } from "react";
 import {
   ActionIcon,
   UnstyledButton,
-  Modal,
   Loader,
   FileButton,
   Paper,
@@ -90,7 +91,7 @@ export function StoreGraphicsEditor({
                 <Text fw={550}>
                   {label}{" "}
                   <Text component="span" size="xs" c="dimmed">
-                    {type === "icon" ? "512 × 512" : "1024 × 500"} px
+                    {graphicDimensions[type].join(" × ")} px
                   </Text>
                 </Text>
                 <div className="graphic-slot" {...hoverActionEvents}>
@@ -145,20 +146,13 @@ export function StoreGraphicsEditor({
           })}
         </SimpleGrid>
       </Stack>
-      <Modal
-        opened={!!preview}
+      <ImagePreview
+        src={preview?.url}
+        downloadName={preview?.label}
+        alt={preview?.label ?? ""}
+        title={`${preview?.label ?? ""}预览`}
         onClose={() => setPreview(null)}
-        title={preview && `${preview.label}预览`}
-        size="lg"
-      >
-        {preview && (
-          <img
-            className="image-preview"
-            src={preview.url}
-            alt={preview.label}
-          />
-        )}
-      </Modal>
+      />
     </Paper>
   );
 }

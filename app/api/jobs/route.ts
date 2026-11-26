@@ -1,7 +1,8 @@
+import { findWorkspaceApp } from "../../../lib/workspace-store";
 import { z } from "zod";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../../lib/db";
-import { jobs, jobLogs, workspaces } from "../../../lib/schema";
+import { jobs, jobLogs } from "../../../lib/schema";
 import { enqueue } from "../../../lib/job-store";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 export async function GET(request: Request) {
@@ -73,12 +74,7 @@ export async function POST(request: Request) {
           app = previous.input;
           platform = previous.platform;
         } else {
-          app = tx
-            .select()
-            .from(workspaces)
-            .where(eq(workspaces.id, "default"))
-            .get()
-            ?.apps.find((a) => a.id === input.appId);
+          app = findWorkspaceApp(input.appId, tx);
           if (!app || !app[input.platform])
             throw new HttpError(404, "应用或平台不存在");
           platform = input.platform;

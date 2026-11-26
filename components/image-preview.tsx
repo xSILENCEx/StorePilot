@@ -1,6 +1,8 @@
 "use client";
+import { Modal, Stack, Text, Group, Button } from "@mantine/core";
+import { Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-export function ScreenshotViewer({ src }: { src: string }) {
+function ImageViewport({ src, alt }: { src: string; alt: string }) {
   const viewport = useRef<HTMLDivElement>(null);
   const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
@@ -67,12 +69,65 @@ export function ScreenshotViewer({ src }: { src: string }) {
     >
       <img
         src={src}
-        alt="商店截图预览"
+        alt={alt}
         draggable={false}
         style={{
           transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
         }}
       />
     </div>
+  );
+}
+
+export function ImagePreview({
+  src,
+  alt,
+  title,
+  onClose,
+  downloadName,
+  backLabel,
+  caption,
+  children,
+}: {
+  src?: string | null;
+  alt: string;
+  title: string;
+  onClose: () => void;
+  downloadName?: string;
+  backLabel?: string;
+  caption?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <Modal opened={!!src} onClose={onClose} title={title} size="850px">
+      {src && (
+        <Stack>
+          <ImageViewport key={src} src={src} alt={alt} />
+          <Text size="xs" c="dimmed">
+            滚轮缩放，按住拖动平移。
+          </Text>
+          {caption}
+          <Group justify="space-between" align="end">
+            {backLabel && (
+              <Button variant="default" onClick={onClose}>
+                {backLabel}
+              </Button>
+            )}
+            {children}
+            {downloadName && (
+              <Button
+                component="a"
+                href={src}
+                download={downloadName}
+                variant="default"
+                leftSection={<Download size={15} />}
+              >
+                下载图片
+              </Button>
+            )}
+          </Group>
+        </Stack>
+      )}
+    </Modal>
   );
 }

@@ -1,4 +1,6 @@
 "use client";
+import { readApiResponse } from "../lib/api-response";
+import { draftLocales } from "../lib/store-locales";
 import { useState } from "react";
 import {
   Paper,
@@ -14,7 +16,6 @@ import {
   Text,
 } from "@mantine/core";
 import { ChevronRight } from "lucide-react";
-import { appleDeviceLabel } from "../lib/apple-sync-model";
 import {
   LanguageChecklist,
   languageLabel as label,
@@ -127,9 +128,7 @@ function SelectionGroup({
               ? [...groups].map(([group, entries]) => {
                   const device = entries[0];
                   const label =
-                    device.kind === "screenshot" && device.device !== group
-                      ? device.device
-                      : appleDeviceLabel(group);
+                    device.kind === "screenshot" ? device.device : group;
                   const checked = entries.filter((i) =>
                     selected.includes(i.id),
                   ).length;
@@ -169,9 +168,7 @@ export function TranslationDialog({
   close,
   addBlank,
 }: Props) {
-  const existing = Object.keys(app.drafts)
-    .filter((k) => k.startsWith(platform + ":"))
-    .map((k) => k.split(":")[1]);
+  const existing = draftLocales(app, platform);
   const options =
     mode === "add"
       ? availableStoreLocales(platform, existing).map((l) => l.code)
@@ -233,8 +230,7 @@ export function TranslationDialog({
           revision,
         }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const data = await readApiResponse(response);
       notifications.show({
         message: `已提交 ${targets.length} 种语言的翻译，可在任务记录中查看进度。`,
       });

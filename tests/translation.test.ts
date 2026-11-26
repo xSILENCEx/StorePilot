@@ -1,10 +1,7 @@
+import { blankDraft } from "../lib/model";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  translationItems,
-  applyTranslation,
-  blankDraft,
-} from "../lib/translation";
+import { translationItems, applyTranslation } from "../lib/translation";
 import type { Draft } from "../lib/model";
 
 test("逐张选择截图保留目标草稿其余位置，兼容历史未分组截图", () => {

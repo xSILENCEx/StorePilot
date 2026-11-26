@@ -1,3 +1,6 @@
+import { readWorkspace } from "../../../lib/workspace-store";
+import { snapshotIdentity } from "../../../lib/apple-sync-model";
+import { assetIdFromUrl } from "../../../lib/asset-reference";
 import { createHash } from "node:crypto";
 import { draftAssetUrls } from "../../../lib/screenshot-groups";
 import { eq, inArray, sql } from "drizzle-orm";
@@ -58,11 +61,7 @@ export async function GET(request: Request) {
           status: 204,
           headers: { "Cache-Control": "private, no-store" },
         });
-      const row = tx
-        .select()
-        .from(workspaces)
-        .where(eq(workspaces.id, "default"))
-        .get()!;
+      const row = readWorkspace(tx)!;
       const payload = {
         apps: row.apps.map((app) => {
           const platformIcons: Partial<Record<"apple" | "google", string>> = {};
@@ -91,7 +90,7 @@ export async function PUT(request: Request) {
       ...new Set(
         value.apps.flatMap((a) =>
           Object.values(a.drafts).flatMap((d) =>
-            draftAssetUrls(d).map((url) => url.split("/").at(-1)),
+            draftAssetUrls(d).map((url) => assetIdFromUrl(url)),
           ),
         ),
       ),
@@ -107,11 +106,7 @@ export async function PUT(request: Request) {
     }
     const row = db().transaction(
       (tx) => {
-        const before = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get();
+        const before = readWorkspace(tx);
         if (before?.revision !== value.revision) return;
         for (const app of value.apps) {
           const previous = before.apps.find((a) => a.id === app.id);
@@ -133,10 +128,7 @@ export async function PUT(request: Request) {
               .where(eq(table.app_id, app.id))
               .get()?.current_snapshot;
             if (!snapshot) continue;
-            const [identifier, primary] =
-              "packageName" in snapshot
-                ? [snapshot.packageName, snapshot.details?.defaultLanguage]
-                : [snapshot.target.bundleId, snapshot.metadata.primaryLocale];
+            const { identifier, primary } = snapshotIdentity(snapshot);
             if (
               identifier === app[platform] &&
               removed.some((key) =>

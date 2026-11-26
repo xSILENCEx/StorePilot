@@ -1,4 +1,5 @@
 "use client";
+import { fieldLabel } from "../lib/store-fields";
 import {
   Paper,
   Group,
@@ -45,14 +46,14 @@ export function StoreCopyEditor({
       <Stack gap="lg">
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput
-            label="应用名称"
+            label={fieldLabel(platform, "title")}
             value={draft.title}
             disabled={!editable}
             onChange={(e) => update({ title: e.currentTarget.value })}
             placeholder="输入应用名称"
           />
           <TextInput
-            label={platform === "apple" ? "副标题" : "简短描述"}
+            label={fieldLabel(platform, "subtitle")}
             value={draft.subtitle}
             disabled={!editable}
             onChange={(e) => update({ subtitle: e.currentTarget.value })}
@@ -60,7 +61,7 @@ export function StoreCopyEditor({
           />
         </SimpleGrid>
         <Textarea
-          label="完整描述"
+          label={fieldLabel(platform, "description")}
           minRows={6}
           autosize
           maxRows={16}
@@ -71,14 +72,14 @@ export function StoreCopyEditor({
         />
         {platform === "google" && (
           <TextInput
-            label="宣传视频网址"
+            label={fieldLabel(platform, "video")}
             value={draft.video ?? ""}
             disabled={!editable}
             onChange={(e) => update({ video: e.currentTarget.value })}
           />
         )}
         <TextInput
-          label={platform === "apple" ? "关键词" : "内部备注"}
+          label={fieldLabel(platform, "keywords")}
           description={
             platform === "apple"
               ? "用英文逗号分隔关键词"
@@ -96,7 +97,7 @@ export function StoreCopyEditor({
             <Accordion.Panel>
               <Stack gap="md">
                 <Textarea
-                  label="推广文本"
+                  label={fieldLabel(platform, "promotionalText")}
                   value={draft.promotionalText ?? ""}
                   disabled={!editable}
                   onChange={(e) =>
@@ -107,7 +108,7 @@ export function StoreCopyEditor({
                   minRows={2}
                 />
                 <Textarea
-                  label="版本更新说明"
+                  label={fieldLabel(platform, "whatsNew")}
                   value={draft.whatsNew ?? ""}
                   disabled={!editable}
                   onChange={(e) => update({ whatsNew: e.currentTarget.value })}
@@ -124,14 +125,7 @@ export function StoreCopyEditor({
                   ).map((field) => (
                     <TextInput
                       key={field}
-                      label={
-                        {
-                          supportUrl: "支持网址",
-                          marketingUrl: "营销网址",
-                          privacyPolicyUrl: "隐私政策网址",
-                          privacyChoicesUrl: "隐私选择网址",
-                        }[field]
-                      }
+                      label={fieldLabel(platform, field)}
                       value={draft[field] ?? ""}
                       disabled={!editable}
                       onChange={(e) =>

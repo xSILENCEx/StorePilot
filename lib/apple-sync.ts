@@ -1,3 +1,6 @@
+import { maxImagePixels } from "./asset-reference";
+import { localeCode } from "./store-locales";
+import { blankDraft } from "./model";
 import { appleToken } from "./store-token";
 import { parseAppleDeviceCatalog } from "./apple-device-catalog";
 import { z } from "zod";
@@ -67,21 +70,12 @@ export async function readAppleSnapshot(
   ] as const) {
     const seen = new Set<string>();
     for (const row of rows) {
-      const locale = z
-        .string()
-        .regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/)
-        .parse(row.attributes.locale);
+      const locale = localeCode.parse(row.attributes.locale);
       if (seen.has(locale))
         throw new AppleReadError("Apple 返回重复语言，未更新快照。");
       seen.add(locale);
       const entry = (locales[locale] ??= {
-        draft: {
-          title: "",
-          subtitle: "",
-          description: "",
-          keywords: "",
-          images: [],
-        },
+        draft: blankDraft(),
         screenshots: [],
         appInfoLocalizationId: null,
         versionLocalizationId: null,
@@ -338,7 +332,7 @@ function screenshot(
         url.hostname.endsWith(".mzstatic.com")
       ) ||
       /[{}]|%7B|%7D/i.test(url.href) ||
-      asset.width * asset.height > 40000000
+      asset.width * asset.height > maxImagePixels
     )
       throw new AppleReadError("Apple 截图地址或尺寸不可信，已停止同步。");
     sourceUrl = url.href;

@@ -1,28 +1,38 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import test from "node:test";
+import test, { before, after } from "node:test";
 import next from "next";
 import { chromium } from "playwright-core";
 
+let server, app, browser, origin;
+before(async () => {
+  app = next({ dev: false, hostname: "127.0.0.1" });
+  await app.prepare();
+  server = createServer(app.getRequestHandler());
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  origin = "http://127.0.0.1:" + server.address().port;
+  browser = await chromium.launch({ channel: "msedge" });
+});
+after(async () => {
+  await browser?.close();
+  if (server) {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+  await app?.close();
+});
+async function workspacePage(t) {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  return page;
+}
 test(
   "前往设置时等待草稿保存，冲突时保留当前编辑",
   { timeout: 45000 },
   async (t) => {
-    const app = next({ dev: false, hostname: "127.0.0.1" });
-    await app.prepare();
-    const server = createServer(app.getRequestHandler());
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    t.after(async () => {
-      server.closeAllConnections();
-      await new Promise((resolve) => server.close(resolve));
-      await app.close();
-    });
-    const origin = "http://127.0.0.1:" + server.address().port;
-    const browser = await chromium.launch({ channel: "msedge" });
-    t.after(() => browser.close());
-    const page = await browser.newPage();
+    const page = await workspacePage(t);
     const fixture = {
       id: crypto.randomUUID(),
       name: "导航测试",
@@ -78,5 +88,67 @@ test(
     await page.getByText("测试修订冲突", { exact: true }).waitFor();
     assert.equal(new URL(page.url()).pathname, "/");
     assert.equal(await title.inputValue(), "保留在编辑器");
+  },
+);
+
+test(
+  "草稿图形使用共享图片预览，关闭再打开时重置缩放",
+  { timeout: 45000 },
+  async (t) => {
+    const page = await workspacePage(t);
+    const url = "/api/assets/" + "a".repeat(64);
+    const fixture = {
+      id: crypto.randomUUID(),
+      name: "图形测试",
+      apple: "",
+      google: "test.app",
+      drafts: {
+        "google:en-US": {
+          title: "",
+          subtitle: "",
+          description: "",
+          keywords: "",
+          images: [],
+          graphics: { icon: url },
+        },
+      },
+    };
+    await page.route("**/api/**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === url)
+        return route.fulfill({
+          contentType: "image/svg+xml",
+          body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
+        });
+      return route.fulfill({
+        json:
+          path === "/api/apps"
+            ? { apps: [fixture], revision: 1, readVersion: "one" }
+            : {},
+      });
+    });
+    await page.goto(origin);
+    await page.getByText(fixture.name, { exact: true }).click();
+    const open = page.getByRole("button", { name: "预览应用图标" });
+    await open.click();
+    const dialog = page.getByRole("dialog", { name: "应用图标预览" });
+    const img = dialog.getByRole("img", { name: "应用图标" });
+    await img.waitFor();
+    await img
+      .locator("..")
+      .dispatchEvent("wheel", { deltaY: -100, clientX: 100, clientY: 100 });
+    await page.waitForFunction(
+      () =>
+        Number(
+          document
+            .querySelector('[role="dialog"] img')
+            .style.transform.match(/scale\(([^)]+)/)[1],
+        ) > 1,
+    );
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    await open.click();
+    await img.waitFor();
+    assert.match(await img.getAttribute("style"), /scale\(1\)/);
   },
 );

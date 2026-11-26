@@ -1,12 +1,6 @@
-import { eq } from "drizzle-orm";
+import { saveStoreSnapshot } from "./store-snapshot";
 import { z } from "zod";
-import { db } from "./db";
-import {
-  connectionConfigs,
-  storeSnapshots,
-  workspaces,
-  type Job,
-} from "./schema";
+import { type Job } from "./schema";
 import { workerConfig } from "./config-store";
 import { AppleReadError, readAppleSnapshot } from "./apple-sync";
 import { saveStoreImages, StoreSyncError } from "./store-assets";
@@ -24,54 +18,7 @@ export async function pullAppleTask(
     if (config.revision !== input.configRevision)
       throw new AppleReadError("配置已变更，请重新拉取。");
     const snapshot = await readAppleSnapshot(config, input.appInfoId);
-    const oldSnapshot = db()
-      .select()
-      .from(storeSnapshots)
-      .where(eq(storeSnapshots.app_id, job.app_id))
-      .get()?.current_snapshot;
-    logJob(job.id, "images", "下载并保存各语言、设备的商店截图");
-    const screenshotCount = await saveStoreImages(
-      snapshot,
-      oldSnapshot,
-      download,
-    );
-    db().transaction(
-      (tx) => {
-        const current = tx
-          .select()
-          .from(connectionConfigs)
-          .where(eq(connectionConfigs.id, `apple:${job.app_id}`))
-          .get();
-        if (current?.revision !== config.revision)
-          throw new AppleReadError("拉取期间配置已变更，未更新快照。");
-        const app = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get()
-          ?.apps.find((a) => a.id === job.app_id);
-        if (!app?.apple)
-          throw new AppleReadError("Apple 应用已移除，未更新快照。");
-        const value = {
-          app_id: job.app_id,
-          config_revision: config.revision,
-          current_snapshot: snapshot,
-          updated_at: new Date().toISOString(),
-        };
-        tx.insert(storeSnapshots)
-          .values(value)
-          .onConflictDoUpdate({ target: storeSnapshots.app_id, set: value })
-          .run();
-        finishJob(job.id, "succeeded", {
-          message: `已同步 ${Object.keys(snapshot.locales).length} 种语言的元数据和 ${screenshotCount} 张截图，草稿未改变`,
-          target: snapshot.target,
-          screenshotCount,
-          warnings: snapshot.warnings,
-        });
-        logJob(job.id, "complete", "商店资料快照已保存");
-      },
-      { behavior: "immediate" },
-    );
+    await saveStoreSnapshot(job, config.revision, snapshot, download);
   } catch (error) {
     const message =
       error instanceof AppleReadError || error instanceof StoreSyncError

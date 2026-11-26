@@ -1,4 +1,5 @@
 "use client";
+import { uploadImages, appendImages } from "../lib/store-image-client";
 import { hoverActionEvents } from "./hover-actions";
 import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
@@ -9,14 +10,13 @@ import {
   Button,
   FileButton,
   Group,
-  Modal,
   Select,
   Stack,
   Text,
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Download, ImagePlus, X } from "lucide-react";
+import { ImagePlus, X } from "lucide-react";
 import { ImageGenerator } from "./image-generator";
 import {
   groupImages,
@@ -26,7 +26,7 @@ import {
   type DeviceGroup,
 } from "../lib/screenshot-groups";
 import type { Draft, Platform } from "../lib/model";
-import { ScreenshotViewer } from "./screenshot-viewer";
+import { ImagePreview } from "./image-preview";
 export type EditorProps = {
   appId: string;
   platform: Platform;
@@ -82,7 +82,7 @@ export function ScreenshotGroup({
 
       updateDraft((current) => {
         const existing = groupImages(current, target);
-        const next = [...new Set([...existing, converted])];
+        const next = appendImages(existing, [converted]);
         if (
           next.length > (groups.find((g) => g.value === target)?.limit ?? 0)
         ) {
@@ -117,29 +117,21 @@ export function ScreenshotGroup({
     try {
       if (images.length + files.length > group.limit)
         throw new Error(`此设备组最多保存 ${group.limit} 张截图`);
-      for (const file of files) {
-        if (file.size > 20 * 1024 * 1024)
-          throw new Error(`${file.name} 超过 20 MB`);
-        added.push(
-          await storeImage(file, {
-            kind: "screenshot",
-            platform,
-            appId,
-            group: group.value,
-            preferred: screenSize,
-          }).catch((error) => {
-            throw new Error(file.name + "：" + error.message);
-          }),
-        );
-      }
+      for await (const url of uploadImages(files, {
+        kind: "screenshot",
+        platform,
+        appId,
+        group: group.value,
+        preferred: screenSize,
+      }))
+        added.push(url);
     } catch (e) {
       notifications.show({
         color: "red",
         message: e instanceof Error ? e.message : "上传失败",
       });
     } finally {
-      if (added.length)
-        updateImages((current) => [...new Set([...current, ...added])]);
+      if (added.length) updateImages((current) => appendImages(current, added));
       setBusy(false);
     }
   }
@@ -218,7 +210,7 @@ export function ScreenshotGroup({
               images.length < group.limit
             }
             onAdd={(url) =>
-              updateImages((current) => [...new Set([...current, url])])
+              updateImages((current) => appendImages(current, [url]))
             }
           />
         </Group>
@@ -364,49 +356,34 @@ export function ScreenshotGroup({
           </Text>
         )}
       </Group>
-      <Modal
-        opened={!!preview}
-        onClose={() => setPreview(null)}
+      <ImagePreview
+        src={preview}
+        alt="商店截图预览"
         title="截图预览"
-        size="850px"
+        downloadName="store-screenshot.png"
+        onClose={() => setPreview(null)}
       >
         {preview && (
-          <Stack>
-            <ScreenshotViewer key={preview} src={preview} />
-            <Text size="xs" c="dimmed">
-              滚轮缩放，按住拖动平移。
-            </Text>
-            <Group align="end">
-              <Select
-                label="移入设备组"
-                searchable
-                value={destination}
-                onChange={setDestination}
-                data={groups.filter(
-                  (g) => g.value !== group.value && g.value !== ungrouped,
-                )}
-              />
-              <Button
-                variant="default"
-                disabled={!enabled || busy || !destination}
-                onClick={() => destination && moveToGroup(preview, destination)}
-              >
-                移动截图
-              </Button>
-            </Group>
-            <Group justify="end">
-              <Button
-                component="a"
-                href={preview}
-                download="store-screenshot.png"
-                leftSection={<Download size={15} />}
-              >
-                下载图片
-              </Button>
-            </Group>
-          </Stack>
+          <Group align="end">
+            <Select
+              label="移入设备组"
+              searchable
+              value={destination}
+              onChange={setDestination}
+              data={groups.filter(
+                (g) => g.value !== group.value && g.value !== ungrouped,
+              )}
+            />
+            <Button
+              variant="default"
+              disabled={!enabled || busy || !destination}
+              onClick={() => destination && moveToGroup(preview, destination)}
+            >
+              移动截图
+            </Button>
+          </Group>
         )}
-      </Modal>
+      </ImagePreview>
     </>
   );
 }

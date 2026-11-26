@@ -138,6 +138,44 @@ test("商店同步、推送与主语言保护", async (t) => {
       );
     },
   );
+  await t.test("Apple 拉取期间更换 Bundle ID 时保留原快照", async () => {
+    globalThis.fetch = mockApple({ title: "过期的目标", screenshots: true });
+    assert.equal(
+      (await pullApple(request("/api/apple-sync", "POST", { appId }))).status,
+      202,
+    );
+    const owner = randomUUID();
+    assert.ok(acquireWorker(owner));
+    const job = claimJob(owner)!;
+    const row = db().select().from(workspaces).get()!;
+    try {
+      db()
+        .update(workspaces)
+        .set({ apps: row.apps.map((a) => ({ ...a, apple: "changed.bundle" })) })
+        .where(eq(workspaces.id, "default"))
+        .run();
+      await pullAppleTask(job, async () => bytes);
+      assert.equal(
+        db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
+        "failed",
+      );
+      assert.equal(
+        db()
+          .select()
+          .from(storeSnapshots)
+          .where(eq(storeSnapshots.app_id, appId))
+          .get()?.current_snapshot.locales["en-US"].draft.title,
+        "Changed",
+      );
+    } finally {
+      releaseWorker(owner);
+      db()
+        .update(workspaces)
+        .set({ apps: row.apps })
+        .where(eq(workspaces.id, "default"))
+        .run();
+    }
+  });
   await t.test(
     "Google 快照保存本地化文案和分组截图，失败时保留完整快照",
     async () => {

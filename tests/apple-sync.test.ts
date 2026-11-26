@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readAppleSnapshot } from "../lib/apple-sync";
-import { importMissing, textDiff } from "../lib/apple-sync-model";
+import {
+  canImportLocale,
+  overwriteStoreDrafts,
+  importMissing,
+  textDiff,
+} from "../lib/apple-sync-model";
 import { config, mockApple } from "./apple-sync-fixtures";
 test("Apple joins application and version fields, follows pagination and preserves source IDs", async () => {
   const snapshot = await readAppleSnapshot(config, "", mockApple());
@@ -163,5 +168,27 @@ test("Import preserves existing empty drafts and images; difference compares tex
       snapshot.locales["en-US"].draft,
     ),
     [],
+  );
+});
+
+test("快照分组超过目录上限时，语言选择和实际导入都保留原草稿", async () => {
+  const snapshot = await readAppleSnapshot(
+    config,
+    "",
+    mockApple({ screenshots: true }),
+  );
+  const shot = snapshot.locales["en-US"].screenshots[0];
+  assert.ok(shot);
+  snapshot.deviceGroups = [{ value: shot.deviceType, label: "设备", limit: 1 }];
+  const saved = { ...shot, url: "/api/assets/" + "a".repeat(64) };
+  snapshot.locales["en-US"].screenshots = [saved, saved];
+  const drafts = { "apple:en-US": snapshot.locales["en-US"].draft };
+  assert.equal(
+    canImportLocale(snapshot, "en-US", "apple", "screenshots"),
+    false,
+  );
+  assert.deepEqual(
+    overwriteStoreDrafts(drafts, snapshot, "apple", "screenshots", ["en-US"]),
+    drafts,
   );
 });

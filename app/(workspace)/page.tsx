@@ -1,4 +1,9 @@
 "use client";
+import { settingsUrl } from "../../components/connection-fields";
+import { readApiResponse } from "../../lib/api-response";
+import { draftLocales } from "../../lib/store-locales";
+import { blankDraft } from "../../lib/model";
+import { downloadBlob } from "../../lib/download-blob";
 import {
   WorkspaceLink,
   useWorkspaceDrafts,
@@ -35,13 +40,7 @@ import { overwriteStoreDrafts } from "../../lib/apple-sync-model";
 import type { Draft, Platform, StoreApp } from "../../lib/model";
 import { WorkspaceAppList } from "../../components/workspace-app-list";
 import { AppSettingsDialog } from "../../components/app-settings-dialog";
-const empty = (): Draft => ({
-  title: "",
-  subtitle: "",
-  description: "",
-  keywords: "",
-  images: [],
-});
+
 export default function Home() {
   const [message, setMessage] = useState("");
   const { apps, ready, saved, blocked, persist, retry, revision } =
@@ -74,12 +73,8 @@ export default function Home() {
   const primaryLocale = primaryLoaded ? primary?.locale : undefined;
   const protectedLocale = isPrimaryLocale(locale, primaryLocale);
   const draftKey = `${platform}:${locale}`;
-  const draft = app?.drafts[draftKey] ?? empty();
-  const locales = app
-    ? Object.keys(app.drafts)
-        .filter((key) => key.startsWith(`${platform}:`))
-        .map((key) => key.slice(platform.length + 1))
-    : [];
+  const draft = app?.drafts[draftKey] ?? blankDraft();
+  const locales = app ? draftLocales(app, platform) : [];
   const candidates = availableStoreLocales(platform, locales);
   const editable = ready && !blocked;
   const connectionConfigured =
@@ -89,7 +84,7 @@ export default function Home() {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    void fetch(`/api/settings/${platform}?appId=${selected}`, {
+    void fetch(settingsUrl(platform, selected), {
       cache: "no-store",
       signal: controller.signal,
     })
@@ -133,11 +128,7 @@ export default function Home() {
     select(value.id);
     const p = value.apple ? "apple" : "google";
     setPlatform(p);
-    setLocale(
-      Object.keys(value.drafts)
-        .find((key) => key.startsWith(`${p}:`))
-        ?.slice(p.length + 1) ?? "en-US",
-    );
+    setLocale(draftLocales(value, p)[0] ?? "en-US");
   }
   function openSettings(value?: StoreApp) {
     setEditing(value?.id ?? null);
@@ -152,8 +143,8 @@ export default function Home() {
       apple: apple.trim(),
       google: google.trim(),
       drafts: {
-        ...(apple.trim() ? { "apple:en-US": empty() } : {}),
-        ...(google.trim() ? { "google:en-US": empty() } : {}),
+        ...(apple.trim() ? { "apple:en-US": blankDraft() } : {}),
+        ...(google.trim() ? { "google:en-US": blankDraft() } : {}),
         ...existing?.drafts,
       },
     };
@@ -176,7 +167,7 @@ export default function Home() {
     )
       return;
     const additions = Object.fromEntries(
-      codes.map((code) => [platform + ":" + code, empty()]),
+      codes.map((code) => [platform + ":" + code, blankDraft()]),
     );
     const added = persist((current) =>
       current.map((a) =>
@@ -199,14 +190,10 @@ export default function Home() {
     }
   }
   function download() {
-    const url = URL.createObjectURL(
+    downloadBlob(
       new Blob([JSON.stringify(apps, null, 2)], { type: "application/json" }),
+      "storepilot-drafts.json",
     );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "storepilot-drafts.json";
-    link.click();
-    URL.revokeObjectURL(url);
   }
   async function validate() {
     if (!app || !saved) return;
@@ -217,8 +204,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appId: app.id, platform }),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       notifications.show({
         title: "已提交草稿校验",
         message: "可在左侧任务记录中查看结果。",
@@ -327,11 +313,7 @@ export default function Home() {
                       variant={platform === p ? "filled" : "default"}
                       onClick={() => {
                         setPlatform(p);
-                        setLocale(
-                          Object.keys(app.drafts)
-                            .find((key) => key.startsWith(`${p}:`))
-                            ?.slice(p.length + 1) ?? "en-US",
-                        );
+                        setLocale(draftLocales(app, p)[0] ?? "en-US");
                       }}
                     >
                       {p === "apple" ? "App Store" : "Google Play"}

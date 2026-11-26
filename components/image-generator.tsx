@@ -1,4 +1,8 @@
 "use client";
+import { uploadImages, appendImages } from "../lib/store-image-client";
+import { readApiResponse } from "../lib/api-response";
+import { isJobActive } from "../lib/job-status";
+import { poll } from "../lib/poll";
 import { storeImage } from "../lib/store-image-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -85,32 +89,25 @@ export function ImageGenerator({
         `/api/images?${new URLSearchParams({ appId, platform, locale, deviceGroup, modelSize })}`,
         { cache: "no-store", signal },
       );
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const data = await readApiResponse(response);
       setImages(data.images);
     },
     [appId, platform, locale, deviceGroup, modelSize],
   );
   useEffect(() => {
     if (!opened) return;
-    const controller = new AbortController();
     setLoading(true);
-    const load = async () => {
+    const load = async (signal: AbortSignal) => {
       try {
-        await refresh(controller.signal);
+        await refresh(signal);
       } catch (e) {
-        if (!controller.signal.aborted)
+        if (!signal.aborted)
           setMessage(e instanceof Error ? e.message : "无法读取生成记录");
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
     };
-    void load();
-    const timer = setInterval(() => void load(), 3000);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
+    return poll(load, 3000);
   }, [opened, refresh]);
   async function generate() {
     if (sending.current || !screenshots.length || !settings.prompt.trim())
@@ -169,22 +166,19 @@ export function ImageGenerator({
     try {
       if (selected.length + files.length > limit)
         throw new Error(`该区域最多可选择 ${limit} 张图片`);
-      for (const file of files) {
-        if (file.size > 20 * 1024 * 1024)
-          throw new Error(`${file.name} 超过 20 MB`);
-        const url = await storeImage(
-          file,
-          area === "screenshots" && deviceGroup
-            ? {
-                kind: "screenshot",
-                appId,
-                platform,
-                group: deviceGroup,
-                preferred: screenSize,
-              }
-            : undefined,
-        );
-        const append = (urls: string[]) => [...new Set([...urls, url])];
+      for await (const url of uploadImages(
+        files,
+        area === "screenshots" && deviceGroup
+          ? {
+              kind: "screenshot",
+              appId,
+              platform,
+              group: deviceGroup,
+              preferred: screenSize,
+            }
+          : undefined,
+      )) {
+        const append = (urls: string[]) => appendImages(urls, [url]);
         setUploaded((current) => ({
           ...current,
           [area]: append(current[area]),
@@ -207,8 +201,7 @@ export function ImageGenerator({
     setMessage("");
     try {
       const response = await fetch(`/api/images/${id}`, { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      const data = await readApiResponse(response);
       await refresh();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "删除失败");
@@ -247,7 +240,7 @@ export function ImageGenerator({
 
   const disabled = !enabled || busy || retryPending;
   const activeCount = images.filter((image) =>
-    ["queued", "running"].includes(image.status),
+    isJobActive(image.status),
   ).length;
   return (
     <>

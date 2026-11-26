@@ -1,3 +1,7 @@
+import { maxImagePixels } from "./asset-reference";
+import { readWorkspace } from "./workspace-store";
+import { assetIdFromUrl } from "./asset-reference";
+import { blankDraft } from "./model";
 import { withModelFallback } from "./model-fallback";
 import { enlargeTranslation } from "./translation-upscale";
 import type { AssetTarget } from "./asset-target";
@@ -32,11 +36,7 @@ import {
   fieldLengthIssue,
   type Draft,
 } from "./model";
-import {
-  applyTranslation,
-  blankDraft,
-  type TranslationItem,
-} from "./translation";
+import { applyTranslation, type TranslationItem } from "./translation";
 import { ImageSizeError, prepareStoreImage } from "./prepare-store-image";
 
 async function model(scope: "text" | "image", revision: unknown) {
@@ -128,7 +128,7 @@ async function translateImage(
   target: string,
 ) {
   const { fields, secret } = await model("image", job.input.imageRevision);
-  const buffer = await readFile(assetPath(item.value.split("/").at(-1)!));
+  const buffer = await readFile(assetPath(assetIdFromUrl(item.value)));
   const meta = await sharp(buffer).metadata();
   const { width, height } = meta.autoOrient;
   const reply = await withModelFallback(fields, job.id, async (modelId) => {
@@ -146,7 +146,9 @@ async function translateImage(
       [{ buffer, mime: meta.format === "jpeg" ? "image/jpeg" : "image/png" }],
     );
   });
-  const image = sharp(await replyBuffer(reply), { limitInputPixels: 40000000 });
+  const image = sharp(await replyBuffer(reply), {
+    limitInputPixels: maxImagePixels,
+  });
   const size = (await image.metadata()).autoOrient;
   const closeRatio =
     Math.min(size.width * height, size.height * width) >=
@@ -285,11 +287,7 @@ export async function translateJob(job: Job) {
     db().transaction(
       (tx) => {
         assertWorkerActive();
-        const row = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get();
+        const row = readWorkspace(tx);
         const app = row?.apps.find((a) => a.id === job.app_id);
         if (
           !row ||

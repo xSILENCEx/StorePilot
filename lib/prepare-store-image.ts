@@ -1,7 +1,9 @@
+import { screenshotGroup } from "./screenshot-groups";
+import { graphicDimensions } from "./model";
+import { maxImagePixels } from "./asset-reference";
 import sharp from "sharp";
 import type { AssetTarget } from "./asset-target";
 import {
-  deviceGroups,
   appleScreenDimensions,
   googleScreenshotDevices,
   validGoogleDimensions,
@@ -24,7 +26,7 @@ export function storeDimensions(
   let choices: Size[];
   let requirement: string;
   if (target.kind === "graphic") {
-    choices = target.type === "icon" ? [[512, 512]] : [[1024, 500]];
+    choices = [graphicDimensions[target.type]];
     requirement = choices[0].join(" × ") + " px";
   } else if (target.platform === "google") {
     if (validGoogleDimensions(target.group, w, h)) return [w, h];
@@ -60,9 +62,7 @@ export function storeDimensions(
         ? ""
         : "；大屏也支持每边 1080–7680 px 的 16:9 或 9:16");
   } else {
-    const group = deviceGroups("apple", [target.group], catalog).find(
-      (g) => g.value === target.group,
-    )!;
+    const group = screenshotGroup("apple", target.group, catalog);
     choices = appleScreenDimensions(group).map(
       (size) => size.split(" × ").map(Number) as Size,
     );
@@ -91,7 +91,7 @@ export async function prepareStoreImage(
   target: AssetTarget,
   catalog?: DeviceGroup[],
 ) {
-  const image = sharp(bytes, { limitInputPixels: 40000000 });
+  const image = sharp(bytes, { limitInputPixels: maxImagePixels });
   const meta = await image.metadata();
   if (!["png", "jpeg"].includes(meta.format ?? "") || (meta.pages ?? 1) > 1)
     throw new ImageSizeError("仅支持静态 PNG/JPEG");

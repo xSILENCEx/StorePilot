@@ -1,4 +1,6 @@
 "use client";
+import { readApiResponse } from "../lib/api-response";
+import { poll } from "../lib/poll";
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -59,33 +61,27 @@ export function TaskDrawer({
   const [error, setError] = useState("");
   useEffect(() => {
     if (!opened) return;
-    let active = true;
     setReady(false);
     setJobs([]);
     setError("");
-    const load = async () => {
+    const load = async (signal: AbortSignal) => {
       try {
         const r = await fetch(
           appId ? "/api/jobs?appId=" + encodeURIComponent(appId) : "/api/jobs",
-          { cache: "no-store" },
+          { cache: "no-store", signal },
         );
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error);
-        if (active) {
+        const data = await readApiResponse(r);
+        if (!signal.aborted) {
           setJobs(data.jobs);
           setReady(true);
           setError("");
         }
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : "读取失败");
+        if (!signal.aborted)
+          setError(e instanceof Error ? e.message : "读取失败");
       }
     };
-    void load();
-    const timer = setInterval(() => void load(), 3000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+    return poll(load, 3000);
   }, [opened, appId]);
 
   return (
@@ -159,8 +155,7 @@ export function TaskDrawer({
                               body: JSON.stringify({ retryId: j.id }),
                             },
                           );
-                          const data = await r.json();
-                          if (!r.ok) throw new Error(data.error);
+                          const data = await readApiResponse(r);
                           notifications.show({ message: "已重新提交校验任务" });
                         } catch (e) {
                           notifications.show({

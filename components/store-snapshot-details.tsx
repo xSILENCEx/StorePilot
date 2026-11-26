@@ -1,4 +1,5 @@
 "use client";
+import { fieldLabel, storeFields } from "../lib/store-fields";
 import {
   Accordion,
   Badge,
@@ -15,18 +16,7 @@ import {
   type AppleSnapshot,
   type GoogleSnapshot,
 } from "../lib/apple-sync-model";
-const labels: Record<string, string> = {
-  title: "应用名称",
-  subtitle: "副标题",
-  description: "描述",
-  keywords: "关键词",
-  promotionalText: "推广文本",
-  whatsNew: "版本更新说明",
-  supportUrl: "支持网址",
-  marketingUrl: "营销网址",
-  privacyPolicyUrl: "隐私政策网址",
-  privacyChoicesUrl: "隐私选择网址",
-};
+
 export function StoreMetadata({
   entry,
   selectedLocale,
@@ -58,23 +48,11 @@ export function StoreMetadata({
                   : "与草稿一致。"}
             </Text>
             <Accordion variant="separated">
-              {Object.entries(
-                apple
-                  ? labels
-                  : {
-                      title: "应用名称",
-                      subtitle: "简短描述",
-                      description: "完整描述",
-                      video: "宣传视频网址",
-                    },
-              ).map(([field, label]) => {
-                const key = field as keyof Omit<
-                  Draft,
-                  "images" | "screenshotGroups" | "graphics"
-                >;
+              {storeFields[apple ? "apple" : "google"].map((key) => {
+                const label = fieldLabel(apple ? "apple" : "google", key);
                 const remote = entry.draft[key] ?? "";
                 return (
-                  <Accordion.Item key={field} value={field}>
+                  <Accordion.Item key={key} value={key}>
                     <Accordion.Control>
                       <Group justify="space-between" pr="sm">
                         <Text size="sm">{label}</Text>

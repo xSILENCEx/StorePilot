@@ -1,12 +1,10 @@
+import { findWorkspaceApp } from "../../../lib/workspace-store";
+import { activeJobStatuses } from "../../../lib/job-status";
+import { assetIdFromUrl } from "../../../lib/asset-reference";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "../../../lib/db";
-import {
-  assets,
-  connectionConfigs,
-  jobs,
-  workspaces,
-} from "../../../lib/schema";
+import { assets, connectionConfigs, jobs } from "../../../lib/schema";
 import { imageRequest, imageHistoryQuery } from "../../../lib/image-model";
 import { authorize, failure, HttpError, json } from "../../../lib/http";
 export async function GET(request: Request) {
@@ -79,12 +77,7 @@ export async function POST(request: Request) {
             throw new HttpError(409, "请求 ID 已被使用，请重新发起生成");
           return input.requestId;
         }
-        const app = tx
-          .select()
-          .from(workspaces)
-          .where(eq(workspaces.id, "default"))
-          .get()
-          ?.apps.find((a) => a.id === input.appId);
+        const app = findWorkspaceApp(input.appId, tx);
         if (
           !app?.[input.platform] ||
           !app.drafts[`${input.platform}:${input.locale}`]
@@ -100,7 +93,7 @@ export async function POST(request: Request) {
         const refs = [
           ...new Set(
             [...(input.screenshots ?? []), ...input.settings.references].map(
-              (url) => url.split("/").at(-1)!,
+              (url) => assetIdFromUrl(url),
             ),
           ),
         ];
@@ -116,7 +109,7 @@ export async function POST(request: Request) {
           .where(
             and(
               eq(jobs.kind, "generate_image"),
-              inArray(jobs.status, ["queued", "running"]),
+              inArray(jobs.status, activeJobStatuses),
             ),
           )
           .all();

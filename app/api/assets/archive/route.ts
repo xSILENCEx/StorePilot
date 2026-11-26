@@ -1,6 +1,9 @@
+import { findWorkspaceApp } from "../../../../lib/workspace-store";
+import { localeCode } from "../../../../lib/store-locales";
+import { assetUrl, assetIdFromUrl } from "../../../../lib/asset-reference";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { ZipFile } from "yazl";
 import { z } from "zod";
 import { db } from "../../../../lib/db";
@@ -11,18 +14,18 @@ import {
   privateHeaders,
 } from "../../../../lib/http";
 import { platformSchema } from "../../../../lib/model";
-import { assets, workspaces } from "../../../../lib/schema";
+import { assets } from "../../../../lib/schema";
 import { assetPath } from "../../../../lib/storage";
 
 const input = z.object({
   appId: z.uuid(),
   platform: platformSchema,
-  locale: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
+  locale: localeCode,
   group: z.string().trim().min(1).max(160),
   items: z
     .array(
       z.object({
-        url: z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/),
+        url: assetUrl,
         label: z.string().max(160).optional(),
       }),
     )
@@ -49,14 +52,9 @@ export async function POST(request: Request) {
     const { appId, platform, locale, group, items } = input.parse(
       await request.json(),
     );
-    const app = db()
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.id, "default"))
-      .get()
-      ?.apps.find((a) => a.id === appId);
+    const app = findWorkspaceApp(appId);
     if (!app?.[platform]) throw new HttpError(404, "应用或平台不存在");
-    const ids = items.map((item) => item.url.slice("/api/assets/".length));
+    const ids = items.map((item) => assetIdFromUrl(item.url));
     const rows = db()
       .select()
       .from(assets)

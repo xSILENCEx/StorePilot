@@ -1,4 +1,11 @@
 "use client";
+import { screenshotGroup } from "../lib/screenshot-groups";
+import { LanguageChecklist } from "./language-checklist";
+import { snapshotIdentity, canImportLocale } from "../lib/apple-sync-model";
+import { readApiResponse } from "../lib/api-response";
+import { isJobActive } from "../lib/job-status";
+import { poll } from "../lib/poll";
+import { ImagePreview } from "./image-preview";
 import { StoreGraphics, StoreScreenshots } from "./store-snapshot-media";
 import { WorkspaceLink } from "./workspace-shell";
 import { useEffect, useState } from "react";
@@ -6,7 +13,6 @@ import {
   Accordion,
   Alert,
   Badge,
-  Checkbox,
   Button,
   Drawer,
   Group,
@@ -18,14 +24,11 @@ import {
   TextInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { CloudDownload, Download } from "lucide-react";
-import { deviceGroups } from "../lib/screenshot-groups";
+import { CloudDownload } from "lucide-react";
 import { graphicLabels, type GraphicType } from "../lib/model";
 import type { StoreApp, Platform } from "../lib/model";
 import {
-  appleDeviceLabel,
   type ImportSection,
-  type StoreLocales,
   textDiff,
   type AppleScreenshot,
   type AppleSnapshot,
@@ -61,12 +64,6 @@ export function StoreSyncPanel({
   const apple = platform === "apple";
   const store = apple ? "Apple" : "Google Play";
   const endpoint = `/api/${platform}-sync`;
-  const groupLabel = (device: string) =>
-    apple
-      ? appleDeviceLabel(device)
-      : deviceGroups("google", [device]).find(
-          (group) => group.value === device,
-        )!.label;
   const [opened, setOpened] = useState(false);
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState("");
@@ -74,46 +71,39 @@ export function StoreSyncPanel({
   const [busy, setBusy] = useState(false);
   const [activeLocale, setActiveLocale] = useState(locale);
   const [tab, setTab] = useState<string | null>("metadata");
+  const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (selection === null) setQuery("");
+  }, [selection]);
   const [preview, setPreview] = useState<AppleScreenshot | null>(null);
   useEffect(() => {
-    const controller = new AbortController();
-    const refresh = async () => {
+    const refresh = async (signal: AbortSignal) => {
       try {
         const r = await fetch(`${endpoint}?appId=${app.id}`, {
           cache: "no-store",
-          signal: controller.signal,
+          signal,
         });
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error);
-        if (!controller.signal.aborted) {
+        const data = await readApiResponse(r);
+        if (!signal.aborted) {
           setState(data);
-          const identifier = apple
-            ? data.snapshot?.target?.bundleId
-            : data.snapshot?.packageName;
+          const identity = data.snapshot && snapshotIdentity(data.snapshot);
           onPrimary({
             scope: JSON.stringify([app.id, platform, app[platform]]),
             locale:
-              identifier === app[platform]
-                ? apple
-                  ? data.snapshot?.metadata?.primaryLocale
-                  : data.snapshot?.details?.defaultLanguage
+              identity?.identifier === app[platform]
+                ? identity.primary
                 : undefined,
           });
           if (apple)
             onCatalog(data.stale ? undefined : data.snapshot?.deviceGroups);
         }
       } catch (e) {
-        if (!controller.signal.aborted)
+        if (!signal.aborted)
           setError(e instanceof Error ? e.message : "读取商店资料失败");
       }
     };
-    void refresh();
-    const timer = opened ? setInterval(() => void refresh(), 3000) : undefined;
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
+    return poll(refresh, opened ? 3000 : null);
   }, [
     app.id,
     app.apple,
@@ -125,44 +115,26 @@ export function StoreSyncPanel({
     endpoint,
     apple,
   ]);
-  const pending =
-    busy || ["queued", "running"].includes(state?.job?.status ?? "");
+  const pending = busy || isJobActive(state?.job?.status);
   const snapshot = state?.snapshot;
+  const groupLabel = (device: string) =>
+    screenshotGroup(
+      platform,
+      device,
+      snapshot && "target" in snapshot ? snapshot.deviceGroups : undefined,
+    ).label;
   const section = tab as ImportSection;
   const sectionLabel = {
     metadata: "文案",
     screenshots: "截图",
     graphics: "图片资源",
   }[section];
-  const primary =
-    snapshot &&
-    ("packageName" in snapshot
-      ? snapshot.details?.defaultLanguage
-      : snapshot.metadata?.primaryLocale);
-  const locales: StoreLocales = snapshot?.locales ?? {};
-  const eligible = Object.entries(locales)
-    .filter(([, item]) => {
-      if (section === "screenshots")
-        return (
-          item.screenshots?.length &&
-          item.screenshots.every((image) => image.url) &&
-          Object.entries(
-            Object.groupBy(item.screenshots, (image) => image.deviceType),
-          ).every(
-            ([device, images]) =>
-              (images?.length ?? 0) <=
-              (snapshot && "target" in snapshot
-                ? (snapshot.deviceGroups?.find(
-                    (group) => group.value === device,
-                  )?.limit ?? 10)
-                : 8),
-          )
-        );
-      if (section === "graphics")
-        return Object.values(item.graphics ?? {}).some((image) => image.url);
-      return true;
-    })
-    .map(([language]) => language);
+  const primary = snapshot && snapshotIdentity(snapshot).primary;
+  const eligible = snapshot
+    ? Object.keys(snapshot.locales).filter((language) =>
+        canImportLocale(snapshot, language, platform, section),
+      )
+    : [];
   const selectedLocale = snapshot?.locales[activeLocale]
     ? activeLocale
     : Object.keys(snapshot?.locales ?? {})[0];
@@ -184,8 +156,7 @@ export function StoreSyncPanel({
           apple ? { appId: app.id, appInfoId } : { appId: app.id },
         ),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       setState((s) => s && { ...s, job: { status: "queued" } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "同步失败");
@@ -384,27 +355,15 @@ export function StoreSyncPanel({
                 ? "所选语言的图片资源将替换为商店图片资源。"
                 : "将覆盖所选语言的商店文案字段，缺少的语言将创建草稿。"}
           </Text>
-          <Group>
-            <Button variant="subtle" onClick={() => setSelection(eligible)}>
-              全选
-            </Button>
-            <Button variant="subtle" onClick={() => setSelection([])}>
-              全不选
-            </Button>
-          </Group>
-          <Checkbox.Group value={selection ?? []} onChange={setSelection}>
-            <Stack gap="xs">
-              {eligible.map((language) => (
-                <Checkbox
-                  key={language}
-                  value={language}
-                  label={
-                    language === primary ? language + "（商店默认）" : language
-                  }
-                />
-              ))}
-            </Stack>
-          </Checkbox.Group>
+          <LanguageChecklist
+            options={eligible}
+            targets={selection ?? []}
+            setTargets={setSelection}
+            query={query}
+            setQuery={setQuery}
+            primary={primary ?? undefined}
+          />
+
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setSelection(null)}>
               取消
@@ -435,36 +394,23 @@ export function StoreSyncPanel({
           </Group>
         </Stack>
       </Modal>
-      <Modal
-        opened={opened && !!preview}
-        onClose={() => setPreview(null)}
+      <ImagePreview
+        src={opened ? preview?.url : null}
+        alt="商店图片"
         title="商店图片预览"
-        size="850px"
-      >
-        {preview?.url && (
-          <Stack>
-            <img className="image-preview" src={preview.url} alt="商店图片" />
+        onClose={() => setPreview(null)}
+        backLabel="返回商店资料"
+        downloadName={preview?.fileName || "store-screenshot.png"}
+        caption={
+          preview && (
             <Text size="xs" c="dimmed">
               {graphicLabels[preview.deviceType as GraphicType] ??
                 groupLabel(preview.deviceType)}{" "}
               · {preview.width} × {preview.height}
             </Text>
-            <Group justify="space-between">
-              <Button variant="default" onClick={() => setPreview(null)}>
-                返回商店资料
-              </Button>
-              <Button
-                component="a"
-                href={preview.url}
-                download={preview.fileName || "store-screenshot.png"}
-                leftSection={<Download size={15} />}
-              >
-                下载图片
-              </Button>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+          )
+        }
+      />
     </>
   );
 }

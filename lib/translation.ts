@@ -1,30 +1,17 @@
+import { screenshotGroup } from "./screenshot-groups";
+import {
+  draftFields,
+  fieldLabel,
+  type StoreField as Field,
+} from "./store-fields";
 import {
   graphicLabels,
   graphicTypes,
   type Draft,
   type Platform,
 } from "./model";
-import {
-  deviceGroups,
-  groupImages,
-  setGroupImages,
-  ungrouped,
-} from "./screenshot-groups";
+import { groupImages, setGroupImages, ungrouped } from "./screenshot-groups";
 
-const labels = {
-  title: "应用名称",
-  subtitle: "副标题",
-  description: "完整描述",
-  keywords: "关键词",
-  promotionalText: "推广文本",
-  whatsNew: "版本更新说明",
-  video: "宣传视频网址",
-  supportUrl: "支持网址",
-  marketingUrl: "营销网址",
-  privacyPolicyUrl: "隐私政策网址",
-  privacyChoicesUrl: "隐私选择网址",
-};
-type Field = keyof typeof labels;
 type Common = { id: string; label: string; section: string; value: string };
 export type TranslationItem = Common &
   (
@@ -35,24 +22,11 @@ export type TranslationItem = Common &
 export function translationItems(platform: Platform, draft?: Draft) {
   const items: TranslationItem[] = [];
   if (!draft) return items;
-  for (const field of Object.keys(labels) as Field[]) {
-    if (
-      platform === "apple"
-        ? field === "video"
-        : !["title", "subtitle", "description", "keywords", "video"].includes(
-            field,
-          )
-    )
-      continue;
+  for (const field of draftFields[platform]) {
     const value = draft[field];
     if (!value?.trim()) continue;
     const link = field === "video" || field.endsWith("Url");
-    const label =
-      platform === "google" && field === "keywords"
-        ? "内部备注"
-        : platform === "google" && field === "subtitle"
-          ? "简短描述"
-          : labels[field];
+    const label = fieldLabel(platform, field);
     items.push({
       id: field,
       field,
@@ -67,10 +41,7 @@ export function translationItems(platform: Platform, draft?: Draft) {
     ...Object.keys(draft.screenshotGroups ?? {}),
   ]) {
     const device =
-      group === ungrouped
-        ? "未分组"
-        : (deviceGroups(platform, [group]).find((g) => g.value === group)
-            ?.label ?? group);
+      group === ungrouped ? "未分组" : screenshotGroup(platform, group).label;
     groupImages(draft, group).forEach((value, index) =>
       items.push({
         id: group + ":" + index,
@@ -118,10 +89,3 @@ export function applyTranslation(
   }
   return next;
 }
-export const blankDraft = (): Draft => ({
-  title: "",
-  subtitle: "",
-  description: "",
-  keywords: "",
-  images: [],
-});

@@ -1,4 +1,5 @@
 "use client";
+import { readApiResponse } from "./api-response";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreApp } from "./model";
 export function useWorkspace(onError: (message: string) => void) {
@@ -22,8 +23,7 @@ export function useWorkspace(onError: (message: string) => void) {
           location.href = "/login";
           return;
         }
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error);
+        const data = await readApiResponse(r);
         revision.current = data.revision;
         readVersion.current = data.readVersion;
         latest.current = data.apps;
@@ -107,8 +107,7 @@ export function useWorkspace(onError: (message: string) => void) {
               revision: revision.current,
             }),
           });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error ?? "保存失败");
+          const data = await readApiResponse(response, "保存失败");
           revision.current = data.revision;
           stored.current = current;
         }

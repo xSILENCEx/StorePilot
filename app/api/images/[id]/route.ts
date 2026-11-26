@@ -1,3 +1,4 @@
+import { activeJobStatuses } from "../../../../lib/job-status";
 import { z } from "zod";
 import { and, eq, notInArray } from "drizzle-orm";
 import { db } from "../../../../lib/db";
@@ -16,7 +17,7 @@ export async function DELETE(
         and(
           eq(jobs.id, id),
           eq(jobs.kind, "generate_image"),
-          notInArray(jobs.status, ["queued", "running"]),
+          notInArray(jobs.status, activeJobStatuses),
         ),
       )
       .run();

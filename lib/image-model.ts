@@ -1,10 +1,12 @@
+import { localeCode } from "./store-locales";
+import { assetUrl } from "./asset-reference";
 import {
   googleScreenshotDevices,
   screenModelSizes,
   validGoogleDimensions,
 } from "./screenshot-groups";
 import { z } from "zod";
-export const assetUrl = z.string().regex(/^\/api\/assets\/[a-f0-9]{64}$/);
+
 const genericSizes = ["auto", "1024x1024", "1024x1536", "1536x1024"];
 function googleModelSize(device: string, size: string) {
   const match = /^([1-9]\d{2,3})x([1-9]\d{2,3})$/.exec(size);
@@ -33,7 +35,7 @@ export type ImageSettings = z.infer<typeof imageSettings>;
 export const imageTarget = z.object({
   appId: z.uuid(),
   platform: z.enum(["apple", "google"]),
-  locale: z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
+  locale: localeCode,
 });
 const deviceGroup = z.string().regex(/^[A-Za-z0-9_-]{1,150}$/);
 export const imageHistoryQuery = imageTarget

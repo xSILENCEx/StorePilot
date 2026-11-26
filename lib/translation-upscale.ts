@@ -1,3 +1,4 @@
+import { maxImagePixels } from "./asset-reference";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -8,7 +9,7 @@ import { ImageSizeError } from "./prepare-store-image";
 
 const run = promisify(execFile);
 async function enhance2x(image: Sharp, w: number, h: number) {
-  if (w * h * 4 > 40000000)
+  if (w * h * 4 > maxImagePixels)
     throw new ImageSizeError("2 倍超分辨率输出超过 4000 万像素限制");
   const tool = path.resolve(
     /* turbopackIgnore: true */ process.env.STOREPILOT_WAIFU2X_DIR ??
@@ -37,7 +38,7 @@ async function enhance2x(image: Sharp, w: number, h: number) {
       ],
       { cwd: tool, timeout: 180000, killSignal: "SIGKILL" },
     );
-    const result = sharp(output, { limitInputPixels: 40000000 });
+    const result = sharp(output, { limitInputPixels: maxImagePixels });
     const meta = await result.metadata();
     if (meta.width !== w * 2 || meta.height !== h * 2)
       throw new Error("unexpected size");
@@ -57,7 +58,7 @@ export async function enlargeTranslation(
   height: number,
   enhance = false,
 ) {
-  const image = sharp(bytes, { limitInputPixels: 40000000 });
+  const image = sharp(bytes, { limitInputPixels: maxImagePixels });
   const size = (await image.metadata()).autoOrient;
   const scale = Math.min(width / size.width, height / size.height);
   if (scale < 1)

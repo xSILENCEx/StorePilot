@@ -1,3 +1,5 @@
+import { findWorkspaceApp } from "./workspace-store";
+import { assetIdFromUrl } from "./asset-reference";
 import { eq } from "drizzle-orm";
 import { configFields } from "./config-model";
 import { workerConfig } from "./config-store";
@@ -6,7 +8,7 @@ import { pushGoogle } from "./google-push";
 import type { PushEntry, LoadAsset } from "./push-plan";
 import { pushApple } from "./apple-push";
 import { db } from "./db";
-import { workspaces, type Job, storeSnapshots } from "./schema";
+import { type Job, storeSnapshots } from "./schema";
 import { platformSchema, graphicTypes, type GraphicType } from "./model";
 import { assetPath, readFile } from "./storage";
 import { prepareStoreImage } from "./prepare-store-image";
@@ -17,12 +19,7 @@ export async function pushStoreJob(job: Job) {
   const report = (msg: string) => logJob(job.id, "push", msg);
   let started = false;
   try {
-    const app = db()
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.id, "default"))
-      .get()
-      ?.apps.find((a) => a.id === job.app_id);
+    const app = findWorkspaceApp(job.app_id);
     const config = await workerConfig(platform, job.app_id);
     if (
       !app ||
@@ -40,7 +37,7 @@ export async function pushStoreJob(job: Job) {
             .get()?.current_snapshot.deviceGroups
         : undefined;
     const asset: LoadAsset = async (url) => {
-      const bytes = await readFile(assetPath(url.split("/").at(-1)!));
+      const bytes = await readFile(assetPath(assetIdFromUrl(url)));
       const meta = await sharp(bytes).metadata();
       return {
         bytes,

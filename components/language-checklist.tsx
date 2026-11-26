@@ -1,6 +1,5 @@
 "use client";
 import { Checkbox, Stack, Text, TextInput } from "@mantine/core";
-import type { Dispatch, SetStateAction } from "react";
 const names = new Intl.DisplayNames(["zh-CN"], { type: "language" });
 export const languageLabel = (code: string) => {
   try {
@@ -16,11 +15,13 @@ export function LanguageChecklist({
   setTargets,
   query,
   setQuery,
+  primary,
 }: {
   options: string[];
   targets: string[];
-  setTargets: Dispatch<SetStateAction<string[]>>;
+  setTargets: (value: string[]) => void;
   query: string;
+  primary?: string;
   setQuery: (query: string) => void;
 }) {
   const filtered = options.filter((code) =>
@@ -45,10 +46,10 @@ export function LanguageChecklist({
         indeterminate={selectedMatches > 0 && selectedMatches < filtered.length}
         onChange={(event) => {
           const checked = event.currentTarget.checked;
-          setTargets((current) =>
+          setTargets(
             checked
-              ? [...new Set([...current, ...filtered])]
-              : current.filter((code) => !filtered.includes(code)),
+              ? [...new Set([...targets, ...filtered])]
+              : targets.filter((code) => !filtered.includes(code)),
           );
         }}
       />
@@ -56,7 +57,9 @@ export function LanguageChecklist({
         {filtered.map((code) => (
           <Checkbox
             key={code}
-            label={languageLabel(code)}
+            label={
+              languageLabel(code) + (code === primary ? "（商店默认）" : "")
+            }
             checked={targets.includes(code)}
             onChange={(e) =>
               setTargets(

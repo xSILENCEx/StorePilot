@@ -1,4 +1,8 @@
 "use client";
+import { fieldLabel, type StoreField } from "../lib/store-fields";
+import { readApiResponse } from "../lib/api-response";
+import { draftLocales } from "../lib/store-locales";
+import { blankDraft } from "../lib/model";
 import { useState } from "react";
 import {
   Alert,
@@ -18,19 +22,7 @@ const labels = {
   screenshots: "设备截图",
   graphics: "商店图片资源",
 };
-const fieldLabels: Record<string, string> = {
-  title: "应用名称",
-  subtitle: "副标题 / 简短描述",
-  description: "描述",
-  keywords: "关键词",
-  video: "宣传视频网址",
-  supportUrl: "支持网址",
-  marketingUrl: "营销网址",
-  privacyPolicyUrl: "隐私政策网址",
-  privacyChoicesUrl: "隐私选择网址",
-  promotionalText: "推广文本",
-  whatsNew: "版本更新说明",
-};
+
 export function StorePushButton({
   app,
   platform,
@@ -52,20 +44,12 @@ export function StorePushButton({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [requestId, setId] = useState("");
-  const locales = Object.keys(app.drafts)
-    .filter((k) => k.startsWith(platform + ":"))
-    .map((k) => k.split(":")[1]);
+  const locales = draftLocales(app, platform);
   const previews = targets.map((lang) => ({
     lang,
     ...pushContent(
       platform,
-      app.drafts[platform + ":" + lang] ?? {
-        title: "",
-        subtitle: "",
-        description: "",
-        keywords: "",
-        images: [],
-      },
+      app.drafts[platform + ":" + lang] ?? blankDraft(),
       sections,
     ),
   }));
@@ -85,8 +69,7 @@ export function StorePushButton({
           sections,
         }),
       });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      const data = await readApiResponse(r);
       notifications.show({ message: "商店推送已加入任务记录" });
       setOpened(false);
     } catch (e) {
@@ -178,7 +161,9 @@ export function StorePushButton({
                   </Text>
                   <Text size="sm">
                     {[
-                      ...Object.keys(p.fields).map((k) => fieldLabels[k]),
+                      ...Object.keys(p.fields).map((k) =>
+                        fieldLabel(platform, k as StoreField),
+                      ),
                       ...Object.entries(p.groups).map(
                         ([group, urls]) => group + "（" + urls.length + " 张）",
                       ),
