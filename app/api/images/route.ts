@@ -68,6 +68,8 @@ export async function POST(request: Request) {
           const {
             configRevision: _revision,
             screenshotIndex: _index,
+            textRevision: _text,
+            screenshotPlan: _plan,
             ...original
           } = existing.input;
           if (
@@ -90,6 +92,18 @@ export async function POST(request: Request) {
           .get();
         if (!config?.secret)
           throw new HttpError(400, "请先在设置中配置图像 API");
+        const textConfig = input.screenshots
+          ? tx
+              .select()
+              .from(connectionConfigs)
+              .where(eq(connectionConfigs.id, "text:global"))
+              .get()
+          : undefined;
+        if (input.screenshots && !textConfig?.secret)
+          throw new HttpError(
+            400,
+            "请在模型配置中设置支持图片输入的文本模型，用于截图策划",
+          );
         const refs = [
           ...new Set(
             [...(input.screenshots ?? []), ...input.settings.references].map(
@@ -127,6 +141,7 @@ export async function POST(request: Request) {
                 ...input,
                 ...(input.screenshots && { screenshotIndex: index }),
                 configRevision: config.revision,
+                ...(textConfig && { textRevision: textConfig.revision }),
               },
             })
             .run();

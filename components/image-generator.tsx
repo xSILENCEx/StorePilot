@@ -196,15 +196,15 @@ export function ImageGenerator({
       setBusy(false);
     }
   }
-  async function remove(id: string) {
+  async function updateRecord(id: string, method: "POST" | "DELETE") {
     setDeleting(id);
     setMessage("");
     try {
-      const response = await fetch(`/api/images/${id}`, { method: "DELETE" });
-      const data = await readApiResponse(response);
+      const response = await fetch(`/api/images/${id}`, { method });
+      await readApiResponse(response);
       await refresh();
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "删除失败");
+      setMessage(e instanceof Error ? e.message : "更新生成记录失败");
     } finally {
       setDeleting(null);
     }
@@ -310,7 +310,7 @@ export function ImageGenerator({
               <Textarea
                 data-autofocus
                 label="你想生成什么样的截图？"
-                description="把画面风格、构图和需要出现的文字写在一起。"
+                description={`整批共用视觉风格，宣传标题使用 ${locale}。可指定文案或要求无标题，原截图保留界面文字。`}
                 placeholder={`例如：为 ${locale} 制作简洁的商店截图，使用浅绿色背景，突出应用界面，顶部标题为…`}
                 minRows={5}
                 autosize
@@ -491,7 +491,8 @@ export function ImageGenerator({
             setTab={setTab}
             loading={loading}
             deleting={deleting}
-            remove={remove}
+            remove={(id) => updateRecord(id, "DELETE")}
+            retry={(id) => updateRecord(id, "POST")}
             setPreview={setPreview}
             disabled={disabled}
             alreadyAdded={alreadyAdded}

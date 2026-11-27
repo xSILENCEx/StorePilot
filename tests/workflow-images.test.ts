@@ -19,7 +19,10 @@ import { executeJob } from "../lib/tasks";
 import { checkpointReply } from "../lib/image-provider";
 import { PUT as saveApps } from "../app/api/apps/route";
 import { GET as getImages, POST as generate } from "../app/api/images/route";
-import { DELETE as removeImage } from "../app/api/images/[id]/route";
+import {
+  POST as retryImage,
+  DELETE as removeImage,
+} from "../app/api/images/[id]/route";
 import { POST as archive } from "../app/api/assets/archive/route";
 import { GET as getAsset } from "../app/api/assets/[id]/route";
 
@@ -60,14 +63,17 @@ test("图片生成、恢复与素材下载", async (t) => {
     if (String(input).endsWith("edits")) {
       assert.ok(init?.body instanceof FormData);
       assert.ok(init.body.get("image") instanceof Blob);
-      assert.equal(init.body.get("prompt"), "exact user prompt");
+      assert.match(
+        String(init.body.get("prompt")),
+        /exact user prompt[\s\S]*en-US/,
+      );
     } else {
       assert.equal(
         String(input),
         "https://images.example/v1/images/generations",
       );
       const body = JSON.parse(init!.body as string);
-      assert.equal(body.prompt, "exact user prompt");
+      assert.match(body.prompt, /exact user prompt[\s\S]*en-US/);
       assert.equal(body.model, "fixture-model");
       assert.equal(body.n, 1);
     }
@@ -85,7 +91,7 @@ test("图片生成、恢复与素材下载", async (t) => {
   }
   let generatedId = "";
   await t.test(
-    "提示词原样发送，一次一图，重复提交不重复请求，图片可加入草稿",
+    "提示词绑定当前语言，一次一图，重复提交不重复请求，图片可加入草稿",
     async () => {
       globalThis.fetch = modelFetch;
       const { input, id } = await submit();
@@ -156,6 +162,19 @@ test("图片生成、恢复与素材下载", async (t) => {
     },
   );
   await t.test("多选截图逐张生成，素材共享，重复提交不增加任务", async () => {
+    const { saveConfig } = await import("../lib/config-store");
+    await saveConfig(
+      "text",
+      undefined,
+      0,
+      {
+        baseUrl: "https://planner.example/v1",
+        model: "planner",
+        timeoutSeconds: 60,
+      },
+      "test",
+    );
+    let plans = 0;
     const full = await sharp(bytes)
       .resize(1179, 2556, { fit: "fill" })
       .png()
@@ -182,6 +201,7 @@ test("图片生成、恢复与素材下载", async (t) => {
     const owner = randomUUID();
     assert.ok(acquireWorker(owner));
     const seen = new Set();
+    let failOnce = true;
     try {
       for (let i = 0; i < 2; i++) {
         const job = claimJob(owner)!;
@@ -189,24 +209,65 @@ test("图片生成、恢复与素材下载", async (t) => {
         seen.add(index);
         const small = i === 0;
         globalThis.fetch = async (_url, init) => {
+          if (String(_url).endsWith("/chat/completions")) {
+            plans++;
+            const payload = JSON.parse(String(init?.body)).messages[1].content;
+            assert.equal(payload.length, 3);
+            return Response.json({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      style: "teal",
+                      palette: "#008877",
+                      titles: ["First", "Second"],
+                    }),
+                  },
+                },
+              ],
+            });
+          }
+          if (failOnce) {
+            failOnce = false;
+            return new Response(null, { status: 400 });
+          }
           assert.ok(init?.body instanceof FormData);
-          const files = init.body.getAll("image[]") as File[];
-          assert.equal(files.length, 2);
           assert.deepEqual(
-            Buffer.from(await files[0].arrayBuffer()),
-            [bytes, second][index],
+            Buffer.from(await (init.body.get("image") as File).arrayBuffer()),
+            material,
           );
-          assert.deepEqual(Buffer.from(await files[1].arrayBuffer()), material);
+          assert.match(
+            String(init.body.get("prompt")),
+            /Shared art direction: teal/,
+          );
           return Response.json({
             data: [{ b64_json: (small ? bytes : full).toString("base64") }],
           });
         };
         await executeJob(job);
+        if (i === 0) {
+          assert.equal(
+            db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
+            "failed",
+          );
+          assert.equal(
+            (
+              await retryImage(request("/api/images/" + job.id, "POST", {}), {
+                params: Promise.resolve({ id: job.id }),
+              })
+            ).status,
+            202,
+          );
+          const retried = claimJob(owner)!;
+          assert.equal(retried.id, job.id);
+          await executeJob(retried);
+        }
         assert.equal(
           db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
           "succeeded",
         );
       }
+      assert.equal(plans, 1);
       for (const [deviceGroup, modelSize, count] of [
         [input.deviceGroup, input.settings.modelSize, 2],
         [input.deviceGroup, "2556x1179", 0],

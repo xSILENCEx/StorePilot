@@ -1,3 +1,5 @@
+import { screenshotPlan } from "./screenshot-plan";
+import { composeScreenshot } from "./screenshot-composition";
 import { requestSizedImage } from "./sized-image-request";
 import { pendingImage } from "./image-review";
 import { fitModelImage } from "./fit-model-image";
@@ -29,9 +31,11 @@ export async function generateImageTask(job: Job) {
     const {
       configRevision: _revision,
       screenshotIndex,
+      textRevision,
+      screenshotPlan: _savedPlan,
       ...request
     } = job.input;
-    const { settings, screenshots } = imageRequest.parse(request);
+    const { settings, screenshots, locale } = imageRequest.parse(request);
     const review = pendingImage(job);
     if (review?.sample && job.result?.decision === "accept") {
       const asset = db()
@@ -72,6 +76,11 @@ export async function generateImageTask(job: Job) {
     }
     const attempt = review ? String(job.result?.attempt) : job.id;
     let reply = await savedReply(attempt);
+    const index = Number(screenshotIndex ?? 0);
+    const plan =
+      screenshots && textRevision !== undefined
+        ? await screenshotPlan(job, screenshots, locale, settings.prompt)
+        : undefined;
     if (!reply) {
       const config = await workerConfig("image");
       if (config.revision !== job.input.configRevision)
@@ -79,7 +88,7 @@ export async function generateImageTask(job: Job) {
       const fields = configFields.image.parse(config.fields);
       const references: { buffer: Buffer; mime: string }[] = [];
       const screenshot = screenshots?.[Number(screenshotIndex)];
-      for (const url of screenshot
+      for (const url of screenshot && !plan
         ? [screenshot, ...settings.references]
         : settings.references) {
         const id = assetIdFromUrl(url);
@@ -103,7 +112,20 @@ export async function generateImageTask(job: Job) {
           job.id,
           { ...fields, model },
           config.secret,
-          settings,
+          {
+            ...settings,
+            prompt: plan
+              ? "Create only the background for a coordinated store screenshot campaign. No lettering, symbols resembling text, devices, UI, or screenshot. Shared art direction: " +
+                plan.style +
+                ". Brand palette: " +
+                plan.palette +
+                ". Target locale: " +
+                locale
+              : settings.prompt +
+                "\nAll newly generated visible text must be localized for " +
+                locale +
+                ". Preserve brand names.",
+          },
           index === 0 ? attempt : randomUUID(),
           references,
         ),
@@ -134,11 +156,23 @@ export async function generateImageTask(job: Job) {
     const normalized = target
       ? sharp(await fitModelImage(source, target.width, target.height))
       : image.autoOrient();
-    const output = await normalized
+    const background = await normalized
       .flatten({ background: "#ffffff" })
       .toColourspace("srgb")
       .png()
       .toBuffer();
+    const output =
+      plan && screenshots
+        ? await composeScreenshot(
+            background,
+            await readFile(assetPath(assetIdFromUrl(screenshots[index]))),
+            target?.width ?? width,
+            target?.height ?? height,
+            plan,
+            index,
+            locale,
+          )
+        : background;
     if (output.length > maxAssetBytes)
       throw new ImageGenerationError("生成图片超过 20 MB，请调整模型生成尺寸");
     const asset = await storeAsset(output);

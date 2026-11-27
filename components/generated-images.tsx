@@ -40,6 +40,7 @@ export function GeneratedImageResults({
   loading,
   deleting,
   remove,
+  retry,
   setPreview,
   disabled,
   alreadyAdded,
@@ -54,6 +55,7 @@ export function GeneratedImageResults({
   loading: boolean;
   deleting: string | null;
   remove: (id: string) => void;
+  retry: (id: string) => void;
   setPreview: (image: ImageRecord | null) => void;
   disabled: boolean;
   alreadyAdded: (url: string) => boolean;
@@ -177,6 +179,16 @@ export function GeneratedImageResults({
                   <Text size="xs" c="dimmed" lineClamp={2}>
                     {image.input.settings.prompt}
                   </Text>
+                  {image.status === "failed" && (
+                    <Button
+                      size="xs"
+                      variant="default"
+                      disabled={disabled || deleting === image.id}
+                      onClick={() => retry(image.id)}
+                    >
+                      重试此张
+                    </Button>
+                  )}
                   {image.result?.error && (
                     <Text size="xs" c="orange.8" role="alert">
                       {image.result.error}
