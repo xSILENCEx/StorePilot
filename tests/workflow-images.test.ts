@@ -188,7 +188,7 @@ test("图片生成、恢复与素材下载", async (t) => {
       deviceGroup: "IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY",
       screenshots: [reference.url, (await storeAsset(second)).url],
       settings: {
-        prompt: "batch",
+        prompt: "倾斜的 iPhone 手机壳，中下构图，蓝紫色渐变",
         modelSize: "1179x2556",
         references: [(await storeAsset(material)).url],
       },
@@ -232,9 +232,14 @@ test("图片生成、恢复与素材下载", async (t) => {
             return new Response(null, { status: 400 });
           }
           assert.ok(init?.body instanceof FormData);
+          const refs = init.body.getAll("image[]") as File[];
           assert.deepEqual(
-            Buffer.from(await (init.body.get("image") as File).arrayBuffer()),
-            material,
+            Buffer.from(await refs[0].arrayBuffer()),
+            [bytes, second][index],
+          );
+          assert.deepEqual(Buffer.from(await refs[1].arrayBuffer()), material);
+          assert.ok(
+            String(init.body.get("prompt")).includes(input.settings.prompt),
           );
           assert.match(
             String(init.body.get("prompt")),

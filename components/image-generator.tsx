@@ -310,7 +310,7 @@ export function ImageGenerator({
               <Textarea
                 data-autofocus
                 label="你想生成什么样的截图？"
-                description={`整批共用视觉风格，宣传标题使用 ${locale}。可指定文案或要求无标题，原截图保留界面文字。`}
+                description={`整批共用视觉风格，宣传标题使用 ${locale}。可指定文案或要求无标题，原截图作为设备画面的编辑参考。`}
                 placeholder={`例如：为 ${locale} 制作简洁的商店截图，使用浅绿色背景，突出应用界面，顶部标题为…`}
                 minRows={5}
                 autosize

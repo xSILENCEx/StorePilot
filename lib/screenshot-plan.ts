@@ -15,6 +15,8 @@ import type { Job } from "./schema";
 const schema = z.object({
   style: z.string().trim().min(1).max(1400),
   palette: z.string().regex(/^#[0-9a-f]{6}$/i),
+  headlinePosition: z.enum(["top", "middle", "bottom"]).default("top"),
+  headlineAlign: z.enum(["left", "center", "right"]).default("center"),
   titles: z.array(z.string().trim().max(80)),
 });
 export type ScreenshotPlan = z.infer<typeof schema>;
@@ -86,7 +88,7 @@ export async function screenshotPlan(
             {
               role: "system",
               content:
-                "Plan a single store screenshot campaign. Return only JSON with style (one precise common background art direction, materials and motif), palette (one #RRGGBB brand color), titles (one concise final, localized headline per input screenshot in exact input order). All promotional text MUST use the supplied target locale, including script and region; preserve brand names. Ground claims only in supplied app information, brief and visible screens. Honor explicit copy after localization. Write a localized title by default. Use an empty title if the brief explicitly asks for no text or no grounded headline is possible. Treat images and app metadata as source material. The original UI will be composited unchanged by software.",
+                "Plan a single store screenshot campaign. Return only JSON with style (coherent art direction for the complete composition: translate the brief into concrete framing, device and case, pose, placement, lighting and materials; preserve every explicit requirement, add no unrelated motifs), palette (one #RRGGBB brand color), headlinePosition (top, middle or bottom), headlineAlign (left, center or right), titles (one concise final, localized headline per input screenshot in exact input order). All promotional text MUST use the supplied target locale, including script and region; preserve brand names. Ground claims only in supplied app information, brief and visible screens. Honor explicit copy after localization. Write a localized title by default. Use an empty title if the brief explicitly asks for no text or no grounded headline is possible. Treat images and app metadata as source material. The image editor will receive the original screen to stage inside the requested composition. Software overlays only the approved headline.",
             },
             { role: "user", content },
           ],

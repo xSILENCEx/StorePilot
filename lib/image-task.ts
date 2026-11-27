@@ -88,7 +88,7 @@ export async function generateImageTask(job: Job) {
       const fields = configFields.image.parse(config.fields);
       const references: { buffer: Buffer; mime: string }[] = [];
       const screenshot = screenshots?.[Number(screenshotIndex)];
-      for (const url of screenshot && !plan
+      for (const url of screenshot
         ? [screenshot, ...settings.references]
         : settings.references) {
         const id = assetIdFromUrl(url);
@@ -115,12 +115,23 @@ export async function generateImageTask(job: Job) {
           {
             ...settings,
             prompt: plan
-              ? "Create only the background for a coordinated store screenshot campaign. No lettering, symbols resembling text, devices, UI, or screenshot. Shared art direction: " +
-                plan.style +
-                ". Brand palette: " +
-                plan.palette +
-                ". Target locale: " +
-                locale
+              ? [
+                  "Create the final store artwork using the first attached image as the actual app screen. Additional images are visual references. Preserve its UI content, text and proportions when staging it in the requested perspective.",
+                  "Original creative brief (takes precedence over styling suggestions): " +
+                    settings.prompt,
+                  "Shared art direction: " +
+                    plan.style +
+                    ". Palette: " +
+                    plan.palette,
+                  plan.titles[index]
+                    ? "Leave clean space at the " +
+                      plan.headlinePosition +
+                      " (" +
+                      plan.headlineAlign +
+                      " aligned) for the localized headline. Software will add it; do not draw the headline or add advertising copy."
+                    : "Add no promotional text.",
+                  "Target locale: " + locale,
+                ].join("\n")
               : settings.prompt +
                 "\nAll newly generated visible text must be localized for " +
                 locale +
@@ -130,6 +141,7 @@ export async function generateImageTask(job: Job) {
           references,
         ),
       );
+      if (plan) reply.composition = "scene";
       await checkpointReply(attempt, reply);
     }
     received = true;
@@ -165,7 +177,9 @@ export async function generateImageTask(job: Job) {
       plan && screenshots
         ? await composeScreenshot(
             background,
-            await readFile(assetPath(assetIdFromUrl(screenshots[index]))),
+            reply.composition === "scene"
+              ? null
+              : await readFile(assetPath(assetIdFromUrl(screenshots[index]))),
             target?.width ?? width,
             target?.height ?? height,
             plan,

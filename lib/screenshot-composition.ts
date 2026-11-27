@@ -5,7 +5,7 @@ import type { ScreenshotPlan } from "./screenshot-plan";
 
 export async function composeScreenshot(
   background: Buffer,
-  screen: Buffer,
+  legacyScreen: Buffer | null,
   width: number,
   height: number,
   plan: ScreenshotPlan,
@@ -19,37 +19,34 @@ export async function composeScreenshot(
   const top = title ? header + pad : pad;
   const maxW = Math.max(1, width - 2 * pad),
     maxH = Math.max(1, height - top - pad);
-  const shot = await sharp(screen, { limitInputPixels: maxImagePixels })
-    .autoOrient()
-    .resize(maxW, maxH, { fit: "inside" })
-    .png()
-    .toBuffer({ resolveWithObject: true });
-  const layers: OverlayOptions[] = [
-    {
+  const layers: OverlayOptions[] = [];
+  // Older checkpoints contain only a background, so restore their app screen.
+  if (legacyScreen) {
+    const shot = await sharp(legacyScreen, { limitInputPixels: maxImagePixels })
+      .autoOrient()
+      .resize(maxW, maxH, { fit: "inside" })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    layers.push({
       input: shot.data,
       left: Math.floor((width - shot.info.width) / 2),
       top: top + Math.floor((maxH - shot.info.height) / 2),
-    },
-  ];
-  if (title) {
-    const hex = plan.palette.slice(1);
-    const light =
-      0.299 * parseInt(hex.slice(0, 2), 16) +
-        0.587 * parseInt(hex.slice(2, 4), 16) +
-        0.114 * parseInt(hex.slice(4), 16) >
-      150;
-    layers.push({
-      input: {
-        create: {
-          width,
-          height: header,
-          channels: 4,
-          background: plan.palette,
-        },
-      },
-      left: 0,
-      top: 0,
     });
+  }
+  if (title) {
+    const titleTop =
+      plan.headlinePosition === "bottom"
+        ? height - header
+        : plan.headlinePosition === "middle"
+          ? Math.floor((height - header) / 2)
+          : 0;
+    const zone = await sharp(background)
+      .extract({ left: 0, top: titleTop, width, height: header })
+      .resize(1, 1)
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+    const light = 0.299 * zone[0] + 0.587 * zone[1] + 0.114 * zone[2] > 150;
     const escaped = title
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
@@ -75,7 +72,7 @@ export async function composeScreenshot(
           Math.max(1, Math.round(Math.min(width, height) * 0.065)),
         ...(installed ? { fontfile } : {}),
         width: maxW,
-        align: "centre",
+        align: plan.headlineAlign === "center" ? "centre" : plan.headlineAlign,
         wrap: "word-char",
         rgba: true,
       },
@@ -91,9 +88,15 @@ export async function composeScreenshot(
       .toBuffer({ resolveWithObject: true });
     layers.push({
       input: line.data,
-      left: Math.floor((width - line.info.width) / 2),
-      top: Math.floor((header - line.info.height) / 2),
+      left:
+        plan.headlineAlign === "left"
+          ? pad
+          : plan.headlineAlign === "right"
+            ? width - pad - line.info.width
+            : Math.floor((width - line.info.width) / 2),
+      top: titleTop + Math.floor((header - line.info.height) / 2),
     });
   }
+  if (!layers.length) return background;
   return sharp(background).composite(layers).png().toBuffer();
 }

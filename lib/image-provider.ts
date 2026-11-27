@@ -18,6 +18,7 @@ export type ImageModelConfig = {
   timeoutSeconds: number;
 };
 export type ImageReply = {
+  composition?: "scene";
   b64_json?: string;
   url?: string;
   sizing?: { model: string; target: string; requested: string };
