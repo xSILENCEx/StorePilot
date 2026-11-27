@@ -187,7 +187,7 @@ test("图片生成、恢复与素材下载", async (t) => {
         const job = claimJob(owner)!;
         const index = Number(job.input.screenshotIndex);
         seen.add(index);
-        let small = i === 0;
+        const small = i === 0;
         globalThis.fetch = async (_url, init) => {
           assert.ok(init?.body instanceof FormData);
           const files = init.body.getAll("image[]") as File[];
@@ -202,25 +202,6 @@ test("图片生成、恢复与素材下载", async (t) => {
           });
         };
         await executeJob(job);
-        if (i === 0) {
-          assert.equal(index, 0);
-          const load = () =>
-            db().select().from(jobs).where(eq(jobs.id, job.id)).get()!;
-          const { reviewDecision, pendingImage } =
-            await import("../lib/image-review");
-          assert.equal(load().status, "paused");
-          assert.equal(claimJob(owner), undefined);
-          reviewDecision(job.id, pendingImage(load())!.token, "retry");
-          small = false;
-          await executeJob(claimJob(owner)!);
-          assert.equal(pendingImage(load())!.sample, true);
-          assert.equal(claimJob(owner), undefined);
-          reviewDecision(job.id, pendingImage(load())!.token, "accept");
-          globalThis.fetch = async () => {
-            throw Error("unexpected call");
-          };
-          await executeJob(claimJob(owner)!);
-        }
         assert.equal(
           db().select().from(jobs).where(eq(jobs.id, job.id)).get()?.status,
           "succeeded",

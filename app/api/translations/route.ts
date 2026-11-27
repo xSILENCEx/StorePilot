@@ -19,7 +19,6 @@ const input = z.object({
   mode: z.enum(["add", "update"]),
   source: z.string(),
   targets: z.array(z.string()).min(1).max(150),
-  previewFirst: z.boolean().optional(),
   selected: z.array(z.string()).min(1),
 
   revision: z.number().int(),
@@ -27,16 +26,8 @@ const input = z.object({
 export async function POST(request: Request) {
   try {
     await authorize(request);
-    const {
-      appId,
-      platform,
-      mode,
-      source,
-      targets,
-      selected,
-      previewFirst,
-      revision,
-    } = input.parse(await request.json());
+    const { appId, platform, mode, source, targets, selected, revision } =
+      input.parse(await request.json());
     const configs = {
       text: await readConfig("text"),
       image: await readConfig("image"),
@@ -94,7 +85,7 @@ export async function POST(request: Request) {
         if (pending.some((j) => targets.includes(String(j.input.target))))
           throw new HttpError(409, "目标语言已有翻译任务，请等待完成");
         const batchId = randomUUID();
-        return targets.map((target, index) =>
+        return targets.map((target) =>
           enqueue(
             {
               app_id: appId,
@@ -103,14 +94,6 @@ export async function POST(request: Request) {
               input: {
                 batchId,
                 source,
-                previewFirst:
-                  previewFirst &&
-                  index === 0 &&
-                  targets.length *
-                    items.filter(
-                      (i) => i.kind === "graphic" || i.kind === "screenshot",
-                    ).length >
-                    1,
                 target,
                 items,
                 identifier: app[platform],

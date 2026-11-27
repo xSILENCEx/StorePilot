@@ -6,7 +6,7 @@ import { withModelFallback } from "./model-fallback";
 import { enlargeTranslation } from "./translation-upscale";
 import type { AssetTarget } from "./asset-target";
 import { requestSizedImage } from "./sized-image-request";
-import { pauseImage, pendingImage } from "./image-review";
+import { pendingImage } from "./image-review";
 import { fitModelImage } from "./fit-model-image";
 import { resolutionLabel } from "./image-resolution";
 import { randomUUID } from "node:crypto";
@@ -141,11 +141,16 @@ async function translateImage(
     job.result?.decision === "accept"
   )
     return review.url;
-  let sampleResolution: import("./image-resolution").Resolution | undefined;
   let bytes: Buffer;
-  if (review?.item === item.id && job.result?.decision === "enhance") {
+  if (
+    review?.item === item.id &&
+    (job.result?.decision === "enhance" || job.result?.decision === "fit")
+  ) {
     const raw = await readFile(assetPath(assetIdFromUrl(review.url)));
-    bytes = await enlargeTranslation(raw, width, height, true);
+    bytes =
+      job.result?.decision === "fit"
+        ? await fitModelImage(raw, width, height)
+        : await enlargeTranslation(raw, width, height, true);
   } else {
     const { fields, secret } = await model("image", job.input.imageRevision);
     const reply = await withModelFallback(fields, job.id, (modelId) =>
@@ -174,14 +179,6 @@ async function translateImage(
       "resolution",
       item.label + " · " + resolutionLabel(resolution),
     );
-    if (
-      job.input.previewFirst &&
-      item.id ===
-        (job.input.items as TranslationItem[]).find(
-          (i) => i.kind === "graphic" || i.kind === "screenshot",
-        )?.id
-    )
-      sampleResolution = resolution;
     bytes = await fitModelImage(sourceBytes, width, height);
   }
   const targetSpec: AssetTarget | undefined =
@@ -206,10 +203,6 @@ async function translateImage(
       : undefined;
   if (targetSpec) bytes = await prepareStoreImage(bytes, targetSpec, catalog);
   const asset = await storeAsset(bytes);
-  if (sampleResolution) {
-    pauseImage(job, sampleResolution, asset.url, item.id, values, true);
-    return;
-  }
   return asset.url;
 }
 export async function translateJob(job: Job) {
@@ -342,14 +335,6 @@ export async function translateJob(job: Job) {
       { behavior: "immediate" },
     );
   } catch (e) {
-    if (pendingImage(job)) {
-      finishJob(job.id, "paused", {
-        ...job.result,
-        review: { ...(job.result?.review as object), token: randomUUID() },
-        error: e instanceof Error ? e.message : "处理失败，请核对原图",
-      });
-      return;
-    }
     finishJob(
       job.id,
       e instanceof ImageGenerationError && e.uncertain ? "uncertain" : "failed",

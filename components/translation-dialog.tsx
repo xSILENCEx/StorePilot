@@ -220,7 +220,6 @@ export function TranslationDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          previewFirst: true,
           appId: app.id,
           platform,
           source,
@@ -344,7 +343,7 @@ export function TranslationDialog({
                 )}
                 {imageCount > 0 && (
                   <Text size="sm">
-                    批量翻译先生成一张样图。在任务记录中确认后继续。返回图片会居中裁剪到目标比例，尺寸不足时按原像素放大。
+                    图片按顺序自动处理。返回图片会居中裁剪到目标比例，尺寸不足时按原像素放大。
                   </Text>
                 )}
                 <Text size="sm" c="dimmed">

@@ -1,5 +1,5 @@
 import { requestSizedImage } from "./sized-image-request";
-import { pauseImage, pendingImage } from "./image-review";
+import { pendingImage } from "./image-review";
 import { fitModelImage } from "./fit-model-image";
 import { dimensions, resolutionLabel } from "./image-resolution";
 import { enlargeTranslation } from "./translation-upscale";
@@ -49,11 +49,16 @@ export async function generateImageTask(job: Job) {
       });
       return;
     }
-    if (review && job.result?.decision === "enhance") {
+    if (
+      review &&
+      (job.result?.decision === "enhance" || job.result?.decision === "fit")
+    ) {
       const target = dimensions(review.target)!;
       const bytes = await readFile(assetPath(assetIdFromUrl(review.url)));
       const enhanced = await storeAsset(
-        await enlargeTranslation(bytes, target.width, target.height, true),
+        job.result?.decision === "fit"
+          ? await fitModelImage(bytes, target.width, target.height)
+          : await enlargeTranslation(bytes, target.width, target.height, true),
       );
       finishJob(job.id, "succeeded", {
         url: enhanced.url,
@@ -137,10 +142,6 @@ export async function generateImageTask(job: Job) {
     if (output.length > maxAssetBytes)
       throw new ImageGenerationError("生成图片超过 20 MB，请调整模型生成尺寸");
     const asset = await storeAsset(output);
-    if (job.input.previewFirst && screenshotIndex === 0) {
-      pauseImage(job, resolution, asset.url, "首张样图", undefined, true);
-      return;
-    }
     finishJob(job.id, "succeeded", {
       resolution,
       url: asset.url,
@@ -150,14 +151,6 @@ export async function generateImageTask(job: Job) {
     });
     logJob(job.id, "complete", "图片已保存，可预览并加入商店截图");
   } catch (error) {
-    if (pendingImage(job)) {
-      finishJob(job.id, "paused", {
-        ...job.result,
-        review: { ...(job.result?.review as object), token: randomUUID() },
-        error: error instanceof Error ? error.message : "处理失败，请核对原图",
-      });
-      return;
-    }
     const known = error instanceof ImageGenerationError;
     const uncertain = known ? error.uncertain : sent && !received;
     const message = known
