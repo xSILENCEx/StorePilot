@@ -1,6 +1,6 @@
 "use client";
-import { Modal, Stack, Text, Group, Button } from "@mantine/core";
-import { Download } from "lucide-react";
+import { ActionIcon, Modal, Stack, Text, Group, Button } from "@mantine/core";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 function ImageViewport({ src, alt }: { src: string; alt: string }) {
   const viewport = useRef<HTMLDivElement>(null);
@@ -79,6 +79,22 @@ function ImageViewport({ src, alt }: { src: string; alt: string }) {
   );
 }
 
+export function previewNavigation<T>(
+  items: readonly T[],
+  index: number,
+  select: (item: T, index: number) => void,
+) {
+  if (index < 0 || items.length < 2 || index >= items.length) return undefined;
+  return {
+    index,
+    count: items.length,
+    move: (delta: number) => {
+      const next = index + delta;
+      if (next >= 0 && next < items.length) select(items[next], next);
+    },
+  };
+}
+
 export function ImagePreview({
   src,
   alt,
@@ -86,6 +102,7 @@ export function ImagePreview({
   onClose,
   downloadName,
   backLabel,
+  navigation,
   caption,
   children,
 }: {
@@ -95,13 +112,48 @@ export function ImagePreview({
   onClose: () => void;
   downloadName?: string;
   backLabel?: string;
+  navigation?: ReturnType<typeof previewNavigation>;
   caption?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   return (
     <Modal opened={!!src} onClose={onClose} title={title} size="850px">
       {src && (
-        <Stack>
+        <Stack
+          tabIndex={-1}
+          data-autofocus
+          onKeyDown={(event) => {
+            if (!navigation || event.altKey || event.ctrlKey || event.metaKey)
+              return;
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+              event.preventDefault();
+              navigation.move(event.key === "ArrowLeft" ? -1 : 1);
+            }
+          }}
+        >
+          {navigation && (
+            <Group justify="center" gap="sm">
+              <ActionIcon
+                aria-label="上一张"
+                variant="default"
+                disabled={!navigation.index}
+                onClick={() => navigation.move(-1)}
+              >
+                <ChevronLeft size={18} />
+              </ActionIcon>
+              <Text size="sm" aria-live="polite">
+                {navigation.index + 1} / {navigation.count}
+              </Text>
+              <ActionIcon
+                aria-label="下一张"
+                variant="default"
+                disabled={navigation.index + 1 === navigation.count}
+                onClick={() => navigation.move(1)}
+              >
+                <ChevronRight size={18} />
+              </ActionIcon>
+            </Group>
+          )}
           <ImageViewport key={src} src={src} alt={alt} />
           <Text size="xs" c="dimmed">
             滚轮缩放，按住拖动平移。

@@ -7,7 +7,7 @@ type MediaProps = {
   appId: string;
   platform: Platform;
   locale: string;
-  onPreview: (image: AppleScreenshot) => void;
+  onPreview: (image: AppleScreenshot, group: AppleScreenshot[]) => void;
 };
 export function StoreScreenshots({
   appId,
@@ -64,7 +64,7 @@ export function StoreScreenshots({
                           type="button"
                           className="preview-button"
                           aria-label="预览商店截图"
-                          onClick={() => onPreview(image)}
+                          onClick={() => onPreview(image, shots)}
                         >
                           <img
                             className="store-sync-screenshot"
@@ -131,7 +131,14 @@ export function StoreGraphics({
                     width: "fit-content",
                     maxWidth: "100%",
                   }}
-                  onClick={() => onPreview(image)}
+                  onClick={() =>
+                    onPreview(
+                      image,
+                      graphicTypes.flatMap((type) =>
+                        graphics?.[type] ? [graphics[type]!] : [],
+                      ),
+                    )
+                  }
                   aria-label={`预览${graphicLabels[type]}`}
                 >
                   <img

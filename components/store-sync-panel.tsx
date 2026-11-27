@@ -5,7 +5,7 @@ import { snapshotIdentity, canImportLocale } from "../lib/apple-sync-model";
 import { readApiResponse } from "../lib/api-response";
 import { isJobActive } from "../lib/job-status";
 import { poll } from "../lib/poll";
-import { ImagePreview } from "./image-preview";
+import { ImagePreview, previewNavigation } from "./image-preview";
 import { StoreGraphics, StoreScreenshots } from "./store-snapshot-media";
 
 import { useEffect, useState } from "react";
@@ -78,6 +78,11 @@ export function StoreSyncPanel({
   useEffect(() => {
     if (selection === null) setQuery("");
   }, [selection]);
+  const [gallery, setGallery] = useState<AppleScreenshot[]>([]);
+  function openPreview(image: AppleScreenshot, group: AppleScreenshot[]) {
+    setGallery(group.filter((i) => i.url));
+    setPreview(image);
+  }
   const [preview, setPreview] = useState<AppleScreenshot | null>(null);
   useEffect(() => {
     const refresh = async (signal: AbortSignal) => {
@@ -332,7 +337,7 @@ export function StoreSyncPanel({
                   appId={app.id}
                   platform={platform}
                   locale={selectedLocale}
-                  onPreview={setPreview}
+                  onPreview={openPreview}
                   screenshots={entry?.screenshots ?? []}
                   groupLabel={groupLabel}
                 />
@@ -341,7 +346,7 @@ export function StoreSyncPanel({
                     appId={app.id}
                     platform={platform}
                     locale={selectedLocale}
-                    onPreview={setPreview}
+                    onPreview={openPreview}
                     graphics={snapshot.locales[selectedLocale]?.graphics}
                   />
                 )}
@@ -404,6 +409,11 @@ export function StoreSyncPanel({
         </Stack>
       </Modal>
       <ImagePreview
+        navigation={previewNavigation(
+          gallery,
+          gallery.findIndex((i) => i.id === preview?.id),
+          setPreview,
+        )}
         src={opened ? preview?.url : null}
         alt="商店图片"
         title="商店图片预览"

@@ -72,6 +72,7 @@ export type ImageRecord = {
   id: string;
   status: string;
   input: {
+    requestId?: string;
     locale: string;
     deviceGroup?: string;
     settings: ImageSettings;

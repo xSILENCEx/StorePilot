@@ -24,7 +24,7 @@ import {
   type DeviceGroup,
 } from "../lib/screenshot-groups";
 import type { Draft, Platform } from "../lib/model";
-import { ImagePreview } from "./image-preview";
+import { ImagePreview, previewNavigation } from "./image-preview";
 export type EditorProps = {
   appId: string;
   platform: Platform;
@@ -66,7 +66,7 @@ export function ScreenshotGroup({
     });
   }
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<number | null>(null);
   async function upload(files: File[]) {
     setBusy(true);
     const added: string[] = [];
@@ -261,7 +261,7 @@ export function ScreenshotGroup({
                           move(i, i + (event.key === "ArrowLeft" ? -1 : 1));
                         }
                       }}
-                      onClick={() => setPreview(src)}
+                      onClick={() => setPreview(i)}
                     >
                       <img
                         className="screenshot-image"
@@ -313,7 +313,10 @@ export function ScreenshotGroup({
         )}
       </Group>
       <ImagePreview
-        src={preview}
+        src={preview === null ? null : images[preview]}
+        navigation={previewNavigation(images, preview ?? -1, (_, i) =>
+          setPreview(i),
+        )}
         alt="商店截图预览"
         title="截图预览"
         downloadName="store-screenshot.png"

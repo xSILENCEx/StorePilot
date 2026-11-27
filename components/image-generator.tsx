@@ -500,6 +500,7 @@ export function ImageGenerator({
         </Tabs>
       </Modal>
       <GeneratedImagePreview
+        images={images}
         opened={opened}
         preview={preview}
         setPreview={setPreview}

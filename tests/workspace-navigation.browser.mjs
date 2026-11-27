@@ -137,13 +137,19 @@ test(
           description: "",
           keywords: "",
           images: [],
-          graphics: { icon: url },
+          graphics: {
+            icon: url,
+            featureGraphic: url.replaceAll("aaaa", "bbbb"),
+          },
         },
       },
     };
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === url)
+      if (
+        path === url ||
+        path === fixture.drafts["google:en-US"].graphics.featureGraphic
+      )
         return route.fulfill({
           contentType: "image/svg+xml",
           body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
@@ -173,6 +179,26 @@ test(
             .style.transform.match(/scale\(([^)]+)/)[1],
         ) > 1,
     );
+    assert.equal(
+      await dialog.getByRole("button", { name: "上一张" }).isDisabled(),
+      true,
+    );
+    await dialog.getByRole("button", { name: "下一张" }).click();
+    const next = page.getByRole("dialog", { name: "宣传图预览" });
+    await next.getByText("2 / 2", { exact: true }).waitFor();
+    assert.match(
+      await next.getByRole("img", { name: "宣传图" }).getAttribute("style"),
+      /scale\(1\)/,
+    );
+    assert.equal(
+      await next.getByRole("link", { name: "下载图片" }).getAttribute("href"),
+      fixture.drafts["google:en-US"].graphics.featureGraphic,
+    );
+    assert.equal(
+      await next.getByRole("button", { name: "下一张" }).isDisabled(),
+      true,
+    );
+    await next.getByRole("button", { name: "上一张" }).click();
     await page.keyboard.press("Escape");
     await dialog.waitFor({ state: "hidden" });
     await open.click();

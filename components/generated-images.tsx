@@ -2,7 +2,7 @@
 import { ImageReviewActions } from "./image-review-actions";
 import { resolutionLabel } from "../lib/image-resolution";
 import { isJobActive } from "../lib/job-status";
-import { ImagePreview } from "./image-preview";
+import { ImagePreview, previewNavigation } from "./image-preview";
 import { BatchDownload } from "./batch-download";
 import {
   ActionIcon,
@@ -220,6 +220,7 @@ export function GeneratedImageResults({
 }
 export function GeneratedImagePreview({
   opened,
+  images,
   preview,
   setPreview,
   disabled,
@@ -227,15 +228,31 @@ export function GeneratedImagePreview({
   add,
 }: {
   opened: boolean;
+  images: ImageRecord[];
   preview: ImageRecord | null;
   setPreview: (image: ImageRecord | null) => void;
   disabled: boolean;
   alreadyAdded: (url: string) => boolean;
   add: (image: ImageRecord) => void;
 }) {
+  const batch = images
+    .filter(
+      (i) =>
+        i.result?.url &&
+        (i.input.requestId ?? i.id) ===
+          (preview?.input.requestId ?? preview?.id),
+    )
+    .sort(
+      (a, b) => (a.input.screenshotIndex ?? 0) - (b.input.screenshotIndex ?? 0),
+    );
   return (
     <ImagePreview
       src={opened ? preview?.result?.url : null}
+      navigation={previewNavigation(
+        batch,
+        batch.findIndex((i) => i.id === preview?.id),
+        setPreview,
+      )}
       alt={preview?.input.settings.prompt ?? ""}
       title="预览生成图片"
       onClose={() => setPreview(null)}

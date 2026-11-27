@@ -1,6 +1,6 @@
 "use client";
 import { graphicDimensions } from "../lib/model";
-import { ImagePreview } from "./image-preview";
+import { ImagePreview, previewNavigation } from "./image-preview";
 import { hoverActionEvents } from "./hover-actions";
 import { BatchDownload } from "./batch-download";
 import { storeImage } from "../lib/store-image-client";
@@ -43,6 +43,10 @@ export function StoreGraphicsEditor({
   const [preview, setPreview] = useState<{ url: string; label: string } | null>(
     null,
   );
+  const gallery = graphicTypes.flatMap((type) => {
+    const url = draft.graphics?.[type];
+    return url ? [{ url, label: graphicLabels[type] }] : [];
+  });
   async function upload(type: GraphicType, file: File | null) {
     if (!file) return;
     setUploading(type);
@@ -76,10 +80,7 @@ export function StoreGraphicsEditor({
             locale={locale}
             platform="google"
             group="商店图片资源"
-            items={graphicTypes.flatMap((type) => {
-              const url = draft.graphics?.[type];
-              return url ? [{ url, label: graphicLabels[type] }] : [];
-            })}
+            items={gallery}
           />
         </Group>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -147,6 +148,11 @@ export function StoreGraphicsEditor({
         </SimpleGrid>
       </Stack>
       <ImagePreview
+        navigation={previewNavigation(
+          gallery,
+          gallery.findIndex((i) => i.label === preview?.label),
+          setPreview,
+        )}
         src={preview?.url}
         downloadName={preview?.label}
         alt={preview?.label ?? ""}
